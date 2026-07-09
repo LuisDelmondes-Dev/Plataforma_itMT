@@ -1,0 +1,57 @@
+# ITMT — ambiente de desenvolvimento (F1 MVP)
+# sobe: PostgreSQL 16 com DDL+seed, API NestJS e Web Next.js
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: itmt
+      POSTGRES_PASSWORD: itmt
+      POSTGRES_DB: itmt
+    ports: ["5432:5432"]
+    volumes:
+      - ./db/01-ddl.sql:/docker-entrypoint-initdb.d/01-ddl.sql:ro
+      - ./db/02-seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - ./db/03-f1.sql:/docker-entrypoint-initdb.d/03-f1.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U itmt"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./api
+      dockerfile_inline: |
+        FROM node:20-slim
+        WORKDIR /app
+        COPY package.json ./
+        RUN npm install
+        COPY . .
+        RUN npm run build
+        CMD ["node", "dist/main.js"]
+    environment:
+      DATABASE_URL: postgres://itmt:itmt@db:5432/itmt
+      PORT: "3001"
+    ports: ["3001:3001"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build:
+      context: ./web
+      dockerfile_inline: |
+        FROM node:20-slim
+        WORKDIR /app
+        COPY package.json ./
+        RUN npm install
+        COPY . .
+        ENV API_URL=http://api:3001
+        RUN npm run build
+        CMD ["npm", "start"]
+    environment:
+      API_URL: http://api:3001
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  pgdata:

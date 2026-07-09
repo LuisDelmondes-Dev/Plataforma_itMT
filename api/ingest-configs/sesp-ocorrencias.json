@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "SESP-MT — Ocorrências criminais por município",
+    "origem": "Secretaria de Estado de Segurança Pública de Mato Grosso",
+    "url": "http://www.sesp.mt.gov.br/estatisticas",
+    "baseLegal": "AUTORIZACAO_FORMAL",
+    "licenca": "Autorização formal SESP-MT (registrar nº no ADMIN antes de rodar)",
+    "periodicidade": "MENSAL"
+  },
+  "indicador": { "nome": "Ocorrências criminais registradas", "unidade": "ocorrências", "tipoAgregacao": "SOMA", "subtemaNome": "Delegacias" },
+  "colunas": { "codigoIbge": "COD_IBGE", "valor": "TOTAL_OCORRENCIAS" },
+  "dataReferencia": "2026-05-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

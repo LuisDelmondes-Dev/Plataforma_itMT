@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "CNES/DataSUS — Leitos por município",
+    "origem": "Ministério da Saúde — Cadastro Nacional de Estabelecimentos de Saúde",
+    "url": "https://opendatasus.saude.gov.br/dataset/cnes-cadastro-nacional-de-estabelecimentos-de-saude",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Dados Abertos do SUS (ODbL)",
+    "periodicidade": "MENSAL"
+  },
+  "indicador": { "nome": "Leitos de UTI", "unidade": "leitos", "tipoAgregacao": "SOMA", "subtemaNome": "Número de leitos / vagas de UTI" },
+  "colunas": { "codigoIbge": "CO_MUNICIPIO_GESTOR", "valor": "QT_LEITOS_UTI" },
+  "dataReferencia": "2026-05-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

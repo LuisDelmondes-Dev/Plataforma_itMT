@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "IBGE — PAM Produção Agrícola Municipal (área plantada, CSV/SIDRA)",
+    "origem": "Instituto Brasileiro de Geografia e Estatística",
+    "url": "https://sidra.ibge.gov.br/pesquisa/pam",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Dados abertos IBGE (Lei 12.527/2011)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": { "nome": "Área plantada", "unidade": "hectares", "tipoAgregacao": "SOMA", "subtemaNome": "Área plantada" },
+  "colunas": { "codigoIbge": "Cod_Municipio", "valor": "Area_Plantada_ha" },
+  "dataReferencia": "2024-12-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

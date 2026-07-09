@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "INEP — Censo Escolar (matrículas rede pública)",
+    "origem": "Instituto Nacional de Estudos e Pesquisas Educacionais Anísio Teixeira",
+    "url": "https://www.gov.br/inep/pt-br/acesso-a-informacao/dados-abertos/microdados/censo-escolar",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Dados abertos INEP (Lei 12.527/2011)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": { "nome": "Matrículas na rede pública", "unidade": "matrículas", "tipoAgregacao": "SOMA", "subtemaNome": "Matrículas — rede pública" },
+  "colunas": { "codigoIbge": "CO_MUNICIPIO", "valor": "QT_MAT_BAS" },
+  "dataReferencia": "2025-05-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}
