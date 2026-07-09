@@ -1,0 +1,37 @@
+{
+  "name": "itmt-api",
+  "version": "0.1.0",
+  "description": "ITMT — API do motor determinístico (F1 MVP)",
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "verificar-cadeia": "node scripts/verificar-cadeia.mjs",
+    "ingest:territorio": "node scripts/ingestar-ibge-territorio.mjs",
+    "ingest:populacao": "node scripts/ingestar-ibge-populacao.mjs",
+    "test": "npm run build && node --test test/e2e.mjs test/xingu.e2e.mjs test/f3.e2e.mjs",
+    "ingest:pib": "node scripts/ingestar-ibge-agregado.mjs pib",
+    "ingest:csv": "node scripts/ingestar-csv.mjs",
+    "alerta:fontes": "node scripts/alerta-fontes.mjs",
+    "golden:gerar": "node scripts/gerar-golden-set.mjs",
+    "golden:avaliar": "node scripts/avaliar-golden-set.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.0",
+    "@nestjs/core": "^10.4.0",
+    "@nestjs/platform-express": "^10.4.0",
+    "exceljs": "^4.4.0",
+    "pdfkit": "^0.19.1",
+    "pg": "^8.12.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.11.6",
+    "typescript": "^5.5.0"
+  }
+}
