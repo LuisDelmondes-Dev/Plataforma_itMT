@@ -12,8 +12,6 @@ services:
       - ./db/01-ddl.sql:/docker-entrypoint-initdb.d/01-ddl.sql:ro
       - ./db/02-seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
       - ./db/03-f1.sql:/docker-entrypoint-initdb.d/03-f1.sql:ro
-      - ./db/04-f3.sql:/docker-entrypoint-initdb.d/04-f3.sql:ro
-      - ./db/05-seed-f3.sql:/docker-entrypoint-initdb.d/05-seed-f3.sql:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U itmt"]
@@ -58,16 +56,6 @@ services:
       API_URL: http://api:3001
     ports: ["3000:3000"]
     depends_on: [api]
-
-  # RF-GEO-003 (WMS/WFS): habilite o perfil 'geo' para servir camadas
-  # via GeoServer apontando para os objetos do geoportal.
-  #   docker compose --profile geo up
-  geoserver:
-    image: kartoza/geoserver:2.25.0
-    profiles: ["geo"]
-    ports: ["8080:8080"]
-    environment:
-      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD:-itmt-geoserver-dev}
 
 volumes:
   pgdata:

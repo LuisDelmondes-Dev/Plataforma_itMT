@@ -7,7 +7,6 @@ import { IndicadoresModule } from './indicadores/indicadores.module';
 import { AdminModule } from './admin/admin.module';
 import { TransparenciaModule } from './transparencia/transparencia.module';
 import { XinguModule } from './xingu/xingu.module';
-import { ProducaoModule } from './producao/producao.module';
 
 @Module({
   imports: [
@@ -19,7 +18,6 @@ import { ProducaoModule } from './producao/producao.module';
     AdminModule,
     TransparenciaModule,
     XinguModule,
-    ProducaoModule,
   ],
 })
 export class AppModule {}
