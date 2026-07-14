@@ -71,6 +71,82 @@ Demografia, Economia Privada (PIB), Saúde (CNES), Educação (INEP), Segurança
 via SSO institucional (ponto único de troca). Os artefatos F0
 (`ARQUITETURA-ITMT.md` consolidado) seguem como documento à parte.
 
+## F2 — IA Xingú (código-completo, avaliado)
+
+A borda de linguagem do PRD §10, exatamente como especificada:
+
+| Regra / KR | Implementação | Evidência |
+|---|---|---|
+| **RG-01** orquestrador determinístico | `xingu/orquestrador.service.ts` — máquina de estados codificada; os estados percorridos voltam na resposta | teste "RG-01" |
+| **RG-02** LLM só nas bordas | A01 (pergunta→plano validado contra schema) e A05 (resultado→frase com slots `{{V1}}`); entre eles, só o motor determinístico do F1 | código + testes |
+| **RG-03 / KR3.2** número nunca vem do modelo | A06 Auditor de Números: todo numeral do texto é validado contra o conjunto autorizado; divergência ⇒ **veto absoluto**, alerta na trilha e fallback determinístico | teste de sabotagem: numeral intruso `999999` jamais publica |
+| **RG-04/RF-CHAT-011** injeção | A14 Sentinela + pergunta envelopada como dado no prompt | teste de injeção → `BLOQUEADA` |
+| **RG-05** degradação segura | Sem `ANTHROPIC_API_KEY`, o intérprete **léxico determinístico** assume — o chat continua funcionando para o vocabulário do domínio; o portal nunca dependeu do LLM | avaliação abaixo rodou 100% sem LLM |
+| **RF-CHAT-003** plano exibido | bloco `✛ PLANO` acima da narrativa no chat | `/xingu` |
+| **RF-CHAT-005** ambiguidade | pergunta de volta com no máximo 2 opções clicáveis | teste |
+| **RF-CHAT-006/RN-005** ausência | mensagem do motor, sem estimativa | teste |
+| **RF-CHAT-007/008** follow-up + citações | ações concretas do portal (permalink, exportação CSV) e procedência clicável | `/xingu` |
+| **RF-CHAT-009** trilha | pergunta, plano, valores, intérprete, `PROMPT_VERSAO`, vetos e latência entram na cadeia SHA-256 | evento `CONSULTA_CHAT` |
+| **RF-CHAT-010** contexto de sessão | "e em Sinop?" resolvido pelo contexto do turno anterior | teste |
+| **RF-CHAT-012** cache de planos | por (pergunta normalizada, contexto), TTL 10 min | teste |
+| **RF-CHAT-001/002** texto+voz | STT (Web Speech pt-BR) e TTS opcional no navegador | `/xingu` |
+| **RNF-09** abstração de provedor | interface `ProvedorLlm`; `ProvedorAnthropic` incluso; trocar de fornecedor = 1 classe | `interprete.service.ts` |
+
+### Golden set (KR3.1 / KR3.3)
+
+```bash
+cd api
+npm run golden:gerar            # gera api/golden/golden-set.json a partir do catálogo real
+API_URL=http://localhost:3001 npm run golden:avaliar
+```
+
+Resultado nesta base (500 casos, intérprete léxico, sem LLM):
+**KR3.1 = 100%** de planos corretos (exige ≥85%) · **KR3.3 p95 = 12 ms** (exige ≤5 s).
+Com um provedor LLM configurado, formulações livres fora do vocabulário do golden set
+também passam pela mesma validação de schema, com o léxico como plano B.
+
+### Ativar o LLM na borda
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export XINGU_MODELO=claude-haiku-4-5   # ou outro; A15 (custo) entra no roadmap F5
+```
+
+Sem a chave, nada quebra: `RG-05` por construção.
+
+## F3 — Mapeamento próprio (código-completo)
+
+Módulos `GEO`, `MTIMAGENS`/`VIDEOS` e `CAMPO`. A marca do F3: **todos os vetos são
+de banco** — triggers PL/pgSQL em `db/04-f3.sql`, provados por teste tentando
+violar cada um, inclusive por SQL direto.
+
+| Regra | Veto | Evidência |
+|---|---|---|
+| **RF-GEO-007 / RC-02** | produto `RESTRITO`/`CLASSIFICADO` não publica — trigger | teste → 422 com a mensagem do banco |
+| **RC-03 / A11** | imagem de via pública sem `AnonimizacaoAplicada` não publica; a verificação é registrada com responsável na trilha | teste veto→anonimiza→publica |
+| **RC-04 / RF-IMG-006** | pessoa identificável sem `TermoConsentimento` vinculado não publica; termo arquivado com hash SHA-256 | teste |
+| **A12 / RF-IMG-003** | ativo sem licença explícita não publica; toda mídia carrega autor + licença (cadeia de direitos) | teste |
+| **RF-IMG-002** | contribuição externa exige moderação prévia APROVADA | teste |
+| **RF-IMG-005 / RNF-10** | vídeo sem legenda **e** transcrição não publica | teste |
+| **RF-CAMPO-002** | missão sem autorização **vigente na data** não vai a campo nem é executada — trigger consulta `Autorizacao` | teste veto→vincula→executa |
+| **RF-GEO-009 / RC-11** | cópia soberana do 360° é coluna `NOT NULL` — restrição estrutural | DDL |
+| **RF-GEO-004 / RNF-13** | projeto de levantamento só nasce com autorizações, RT, GSD, acurácia; SRC travado em SIRGAS 2000 por `CHECK` | teste 400 |
+
+**Entregas de superfície:** `/geoportal` (produtos publicados com metadados completos,
+cobertura de imagem de rua ● Publicado ITMT / ◐ Preexistente / ○ Pendente, projetos
+estruturantes), `/acervo` (busca pública — só sobrevive ao filtro o que passou pelos
+vetos) e `/campo` (app do operador, **offline-first**: capturas entram em fila local
+com GNSS/checklist/momento-da-captura e sincronizam quando houver rede; painel das
+4 frentes por município — RF-CAMPO-004).
+
+**Fora do software, por natureza:** a fotogrametria em si (nuvem de pontos →
+ortomosaico/MDS/MDT) roda em ODM ou suíte proprietária (ADR-04) e **registra** seus
+produtos aqui; o WMS/WFS é servido pelo GeoServer (perfil `geo` no compose:
+`docker compose --profile geo up`); e o borrão de rostos/placas é executado por
+ferramenta de visão — o sistema garante que **sem a verificação registrada, nada
+publica**, que é exatamente o que RC-03 pede do software. KR2.1/2.2/2.3 (30
+municípios entregues) são metas de operação de campo medidas pelo painel.
+
 ## Detalhe de implementação (rastreado ao PRD)
 
 | Regra / RF | Onde | Como verificar |

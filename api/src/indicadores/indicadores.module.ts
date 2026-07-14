@@ -9,5 +9,6 @@ import { AuditoriaModule } from '../auditoria/auditoria.module';
   imports: [TerritorioModule, AuditoriaModule],
   controllers: [IndicadoresController, ExportacaoController],
   providers: [IndicadoresService],
+  exports: [IndicadoresService],
 })
 export class IndicadoresModule {}

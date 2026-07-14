@@ -42,8 +42,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/consulta" style={{ color: 'var(--ink-2)' }}>
               Indicadores
             </Link>
+            <Link href="/xingu" style={{ color: 'var(--ink-2)' }}>
+              Xingú
+            </Link>
             <Link href="/municipio/5103403" style={{ color: 'var(--ink-2)' }}>
               Fichas municipais
+            </Link>
+            <Link href="/geoportal" style={{ color: 'var(--ink-2)' }}>
+              Geoportal
+            </Link>
+            <Link href="/acervo" style={{ color: 'var(--ink-2)' }}>
+              Acervo
             </Link>
             <Link href="/cobertura" style={{ color: 'var(--ink-2)' }}>
               Cobertura
