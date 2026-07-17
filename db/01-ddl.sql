@@ -142,8 +142,14 @@ CREATE TABLE "EventoAuditoria" (
   "EventoAuditoria_HashAtual"    char(64) NOT NULL
 );
 
--- INSERT-ONLY imposto por grant de banco, não por convenção de equipe
-CREATE ROLE itmt_app LOGIN PASSWORD 'itmt_app';
+-- INSERT-ONLY imposto por grant de banco, não por convenção de equipe.
+-- Role é objeto do CLUSTER: criação idempotente. Senha 'itmt_app' é de
+-- DEV — em produção: ALTER ROLE itmt_app PASSWORD '<segredo>';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'itmt_app') THEN
+    CREATE ROLE itmt_app LOGIN PASSWORD 'itmt_app';
+  END IF;
+END $$;
 GRANT CONNECT ON DATABASE itmt TO itmt_app;
 GRANT USAGE ON SCHEMA public TO itmt_app;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO itmt_app;

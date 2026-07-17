@@ -1,0 +1,74 @@
+# ============================================================
+# Overlay de PRODUÇÃO — usar SEMPRE junto com o compose base:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Exige (sem default, o compose falha se faltar):
+#   POSTGRES_SENHA        senha do dono do banco (role itmt)
+#   ITMT_APP_SENHA        senha do role de aplicação itmt_app
+#   ADMIN_TOKEN           >= 24 caracteres (o main.ts valida)
+#   CORS_ORIGEM           ex.: https://itmt.mt.gov.br
+#
+# A API conecta como itmt_app (RG-10) — o main.ts recusa subir
+# como dono do banco. TLS: coloque um proxy reverso (nginx/
+# traefik/caddy) na frente de web:3000 e api:3001; nada aqui
+# deve ser exposto diretamente à internet.
+# ============================================================
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_SENHA:?defina POSTGRES_SENHA}
+    ports: []                       # banco NUNCA exposto ao host em produção
+    restart: unless-stopped
+
+  api:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://itmt_app:${ITMT_APP_SENHA:?defina ITMT_APP_SENHA}@db:5432/itmt
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?defina ADMIN_TOKEN}
+      CORS_ORIGEM: ${CORS_ORIGEM:?defina CORS_ORIGEM}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    restart: unless-stopped
+
+  web:
+    restart: unless-stopped
+
+  # RF-INGEST-011 + RF-ADMIN-008: rotinas diárias que o README
+  # mandava "agendar no cron" — agora são um serviço.
+  rotinas:
+    build: ./api
+    environment:
+      DATABASE_URL: postgres://itmt:${POSTGRES_SENHA:?defina POSTGRES_SENHA}@db:5432/itmt
+    entrypoint: >
+      sh -c 'while true; do
+        echo "[rotinas] $(date -Iseconds) alerta:fontes";
+        node scripts/alerta-fontes.mjs || echo "[rotinas] ALERTA: fontes falhou";
+        echo "[rotinas] $(date -Iseconds) verificar-cadeia";
+        node scripts/verificar-cadeia.mjs || echo "[rotinas] ALERTA: CADEIA DE AUDITORIA QUEBRADA";
+        sleep 86400;
+      done'
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Backup diário com retenção de 14 dias. A cadeia SHA-256 detecta
+  # adulteração; o backup é quem garante restauração.
+  backup:
+    image: postgres:16
+    environment:
+      PGPASSWORD: ${POSTGRES_SENHA:?defina POSTGRES_SENHA}
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U itmt -d itmt | gzip > /backups/itmt-$(date +%%F-%%H%%M).sql.gz
+          && echo "[backup] $(date -Iseconds) ok"
+          || echo "[backup] $(date -Iseconds) FALHOU";
+        find /backups -name "*.sql.gz" -mtime +14 -delete;
+        sleep 86400;
+      done'
+    volumes:
+      - backups:/backups
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  backups:

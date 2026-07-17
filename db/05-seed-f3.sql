@@ -4,6 +4,14 @@
 -- com os vetos de banco ativos.
 -- ============================================================
 
+-- O seed F3 referencia Nova Mutum, que não está no seed demo F1.
+-- Garante a linha aqui; a carga canônica do IBGE (ingest:territorio)
+-- corrige/completa por upsert idempotente (RF-INGEST-006).
+INSERT INTO "Municipio"
+ ("Municipio_CodigoIbge","Municipio_Nome","Municipio_CodigoRgi","Municipio_CodigoRgint")
+VALUES ('5106422','Nova Mutum','510202','5102')
+ON CONFLICT DO NOTHING;
+
 INSERT INTO "ProjetoLevantamento"
  ("ProjetoLevantamento_CodigoIbge","ProjetoLevantamento_NumeroAutorizacaoCadastro",
   "ProjetoLevantamento_NumeroAutorizacaoVoo","ProjetoLevantamento_ResponsavelTecnico",

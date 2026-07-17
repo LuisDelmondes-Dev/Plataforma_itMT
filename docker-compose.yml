@@ -23,17 +23,9 @@ services:
       retries: 20
 
   api:
-    build:
-      context: ./api
-      dockerfile_inline: |
-        FROM node:20-slim
-        WORKDIR /app
-        COPY package.json ./
-        RUN npm install
-        COPY . .
-        RUN npm run build
-        CMD ["node", "dist/main.js"]
+    build: ./api
     environment:
+      NODE_ENV: development          # dev: sem fail-fast de produção
       DATABASE_URL: postgres://itmt:itmt@db:5432/itmt
       PORT: "3001"
       # IA Xingú — sem chave, degrada para o intérprete léxico (RG-05)
@@ -45,17 +37,7 @@ services:
       db: { condition: service_healthy }
 
   web:
-    build:
-      context: ./web
-      dockerfile_inline: |
-        FROM node:20-slim
-        WORKDIR /app
-        COPY package.json ./
-        RUN npm install
-        COPY . .
-        ENV API_URL=http://api:3001
-        RUN npm run build
-        CMD ["npm", "start"]
+    build: ./web
     environment:
       API_URL: http://api:3001
     ports: ["3000:3000"]

@@ -12,6 +12,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 
@@ -27,7 +28,10 @@ export class AdminGuard implements CanActivate {
     const auth: string = req.headers['authorization'] ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     const esperado = process.env.ADMIN_TOKEN ?? 'itmt-admin-dev';
-    return token === esperado;
+    // comparação em tempo constante — não vaza o prefixo por timing
+    const a = createHash('sha256').update(token).digest();
+    const b = createHash('sha256').update(esperado).digest();
+    return timingSafeEqual(a, b);
   }
 }
 

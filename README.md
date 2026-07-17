@@ -206,6 +206,50 @@ POST /v1/admin/direitos/:id/publicar     # passa pelos vetos F4-RG-01..05
 
 Banco: `psql -d itmt -f db/06-f4.sql -f db/07-seed-f4.sql` (o compose já monta os dois).
 
+## Produção (endurecimento aplicado)
+
+O repositório traz o caminho de produção pronto; o que resta é operação
+(cargas reais, SSO institucional, object storage, domínio/TLS no proxy).
+
+**Subir em produção:**
+
+```bash
+# 1. Migrações (dono do banco aplica; registra em "_Migracao")
+cd api && DATABASE_URL=postgres://itmt:<senha>@host/itmt npm run migrar
+# banco pré-existente sem registro: npm run migrar -- --baseline
+
+# 2. Troque a senha de dev do role de aplicação
+#    ALTER ROLE itmt_app PASSWORD '<segredo>';
+
+# 3. Compose com overlay de produção (exige os segredos, sem defaults)
+POSTGRES_SENHA=... ITMT_APP_SENHA=... ADMIN_TOKEN=... CORS_ORIGEM=https://... \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+| Proteção | Onde | Prova |
+|---|---|---|
+| API conecta como `itmt_app`, nunca dona do banco — trilha de auditoria INSERT-ONLY vale para a aplicação (RG-10) | `db/08-seguranca.sql` + fail-fast no `main.ts` | `UPDATE "EventoAuditoria"` como itmt_app → `permissão negada`; suíte 44/44 roda como itmt_app |
+| Fail-fast de produção: token de dev, role errado ou CORS ausente ⇒ processo não sobe | `main.ts` | exit 1 com as três violações listadas |
+| Token ADMIN em comparação de tempo constante; produção exige ≥24 chars | `AdminGuard` | — |
+| Headers de segurança + CORS restrito por `CORS_ORIGEM` + `trust proxy` | `main.ts` (helmet) | — |
+| Rate limit global (20/s, 300/min por IP; ajustável) ativo em produção | `app.module.ts` (@nestjs/throttler) | desligado em dev/testes |
+| Healthcheck processo+banco | `GET /v1/saude` + HEALTHCHECK nos Dockerfiles | `{"ok":true,"banco":"ok"}` |
+| Migrações versionadas e idempotentes | `api/scripts/migrar.mjs` → tabela `_Migracao` | aplica 8, reexecução aplica 0 |
+| CI: Postgres + migrações + 44 testes + verificador de cadeia + build web | `.github/workflows/ci.yml` | roda em cada push/PR |
+| Rotinas diárias (RF-INGEST-011 fonte parada; RF-ADMIN-008 cadeia) | serviço `rotinas` no compose prod | log com alerta explícito |
+| Backup diário do Postgres, retenção 14 dias | serviço `backup` no compose prod | volume `backups` |
+| Imagens multi-stage, não-root, só deps de produção | `api/Dockerfile`, `web/Dockerfile` | — |
+| Banco sem porta exposta em produção | `docker-compose.prod.yml` | `ports: []` |
+
+**Checklist operacional que o software não resolve sozinho:**
+proxy reverso com TLS na frente de web/api · SSO institucional com MFA no
+lugar do `ADMIN_TOKEN` (o `AdminGuard` é o ponto único de troca) · object
+storage com Object Lock para Bronze e cópia soberana · cargas reais dos
+conectores (seção INGEST) · curadoria contínua do F4 (reverificação das
+fichas e módulos estaduais/municipais do prompt mestre) · caixa de e-mail
+real do canal do titular LGPD · GeoServer com camadas reais · monitoramento
+externo (APM/alertas) apontando para `/v1/saude`.
+
 ## Detalhe de implementação (rastreado ao PRD)
 
 | Regra / RF | Onde | Como verificar |
