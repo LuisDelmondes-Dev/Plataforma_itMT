@@ -14,6 +14,8 @@ services:
       - ./db/03-f1.sql:/docker-entrypoint-initdb.d/03-f1.sql:ro
       - ./db/04-f3.sql:/docker-entrypoint-initdb.d/04-f3.sql:ro
       - ./db/05-seed-f3.sql:/docker-entrypoint-initdb.d/05-seed-f3.sql:ro
+      - ./db/06-f4.sql:/docker-entrypoint-initdb.d/06-f4.sql:ro
+      - ./db/07-seed-f4.sql:/docker-entrypoint-initdb.d/07-seed-f4.sql:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U itmt"]

@@ -8,6 +8,7 @@ import { AdminModule } from './admin/admin.module';
 import { TransparenciaModule } from './transparencia/transparencia.module';
 import { XinguModule } from './xingu/xingu.module';
 import { ProducaoModule } from './producao/producao.module';
+import { DireitosModule } from './direitos/direitos.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ProducaoModule } from './producao/producao.module';
     TransparenciaModule,
     XinguModule,
     ProducaoModule,
+    DireitosModule,
   ],
 })
 export class AppModule {}

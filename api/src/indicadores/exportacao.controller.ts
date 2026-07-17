@@ -109,7 +109,7 @@ export class ExportacaoController {
     res.setHeader('Content-Disposition', `attachment; filename="${nome}.pdf"`);
     doc.pipe(res);
 
-    const tinta = '#14181A', cinza = '#6F787E', borda = '#C7CCD1';
+    const tinta = '#191C1D', cinza = '#43474F', borda = '#C4C6D0';
     doc.fillColor(cinza).fontSize(8).font('Courier')
       .text('+ ITMT — INTELIGENCIA TERRITORIAL DE MATO GROSSO', { characterSpacing: 1 });
     doc.moveDown(0.6);

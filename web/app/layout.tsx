@@ -1,22 +1,22 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import './globals.css';
+import { Shell } from '@/components/Shell';
 
 export const metadata: Metadata = {
-  title: 'ITMT — Inteligência Territorial de Mato Grosso',
+  title: 'Plataforma itMT — Inteligência Territorial de Mato Grosso',
   description:
     'Dados socioeconômicos, geográficos e institucionais dos 142 municípios de Mato Grosso, com procedência auditável.',
+  icons: { icon: '/itmt-icone.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
       <head>
-        {/* Superfamília técnica do Meridiano (§15.2): Sans, Mono e Serif do mesmo desenho */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
       </head>
@@ -24,47 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a href="#conteudo" style={{ position: 'absolute', left: -9999, top: 0 }} className="btn">
           Ir para o conteúdo
         </a>
-        <header
-          style={{
-            height: 64,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 24,
-            padding: '0 24px',
-            background: 'var(--surface)',
-            borderBottom: '1px solid var(--border)',
-          }}
-        >
-          <Link href="/" style={{ fontWeight: 600, color: 'var(--ink)', letterSpacing: '-0.01em' }}>
-            ITMT
-          </Link>
-          <nav style={{ display: 'flex', gap: 16, fontSize: 14 }}>
-            <Link href="/consulta" style={{ color: 'var(--ink-2)' }}>
-              Indicadores
-            </Link>
-            <Link href="/xingu" style={{ color: 'var(--ink-2)' }}>
-              Xingú
-            </Link>
-            <Link href="/municipio/5103403" style={{ color: 'var(--ink-2)' }}>
-              Fichas municipais
-            </Link>
-            <Link href="/geoportal" style={{ color: 'var(--ink-2)' }}>
-              Geoportal
-            </Link>
-            <Link href="/acervo" style={{ color: 'var(--ink-2)' }}>
-              Acervo
-            </Link>
-            <Link href="/cobertura" style={{ color: 'var(--ink-2)' }}>
-              Cobertura
-            </Link>
-            <Link href="/transparencia" style={{ color: 'var(--ink-2)' }}>
-              Transparência
-            </Link>
-          </nav>
-        </header>
-        <main id="conteudo" style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
-          {children}
-        </main>
+        <Shell>{children}</Shell>
       </body>
     </html>
   );

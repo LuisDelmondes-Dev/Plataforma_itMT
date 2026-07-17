@@ -7,7 +7,7 @@ Monorepo com três partes:
 |---|---|---|
 | `db/` | PostgreSQL 16 | DDL do núcleo F1 + seed demonstrativo |
 | `api/` | NestJS + pg | **Motor determinístico** — território, taxonomia, consulta, rollup, auditoria |
-| `web/` | Next.js 14 (App Router) | Portal com design system **Meridiano** |
+| `web/` | Next.js 14 (App Router) | Portal com sidebar retrátil e design system **Territorial Intelligence System** |
 
 ## Subir tudo (Docker)
 
@@ -147,6 +147,65 @@ ferramenta de visão — o sistema garante que **sem a verificação registrada,
 publica**, que é exatamente o que RC-03 pede do software. KR2.1/2.2/2.3 (30
 municípios entregues) são metas de operação de campo medidas pelo painel.
 
+## F4 — Mapa de Direitos (código-completo)
+
+Materialização executável do **Prompt Mestre — Mapa Brasileiro de Serviços
+Públicos Gratuitos, Benefícios e Direitos do Cidadão**
+([docs/F4-PROMPT-MESTRE.md](docs/F4-PROMPT-MESTRE.md)), na arquitetura da casa:
+a ficha do §6 é o schema da tabela `Direito`; a classificação de confiança do
+§10 é coluna com `CHECK`; e as regras de confiabilidade do §2 são **vetos de
+banco** (trigger em `db/06-f4.sql`), provados por teste:
+
+| Regra | Veto | Evidência |
+|---|---|---|
+| **F4-RG-01** (§2.6) | projeto de lei jamais publica como direito vigente | teste → 422 |
+| **F4-RG-02** (§2.3) | sem base legal não publica | teste → 422 |
+| **F4-RG-03** (§10) | informação `REVOGADA` não publica como direito atual | teste → 422 |
+| **F4-RG-04** (§2.1/2.4) | link fora de domínio oficial (gov.br/jus.br/leg.br/mp.br/def.br) não publica | teste → 422 |
+| **F4-RG-05** (§2.2) | sem data de última verificação não publica | teste → 422 |
+| **F4-RG-06** (§11) | renda, perícia e condição específica são SEMPRE `AVALIACAO` — `CHECK` em `RegraElegibilidade`; o motor nunca decide limite de renda nem laudo | CHECK + teste |
+
+**Motor "Descubra seus direitos" (§8)** — `POST /v1/direitos/descubra`:
+determinístico (mesmo perfil ⇒ mesma resposta, testado), classifica cada
+direito publicado em *provável* / *precisa de avaliação* (com os critérios) /
+*não elegível* (com o motivo), e alerta incompatibilidades de acumulação
+(`IncompatibilidadeBeneficio`). O perfil não carrega identificadores (sem
+nome, CPF, NIS, renda em valores ou diagnóstico — §8); a trilha de auditoria
+registra apenas os fatores informados e as contagens. Dado ausente vira
+avaliação, nunca chute — ausência é resposta, também aqui.
+
+**Entregas de superfície:** `/direitos` (mapa com filtros por área, público,
+busca com `unaccent` e a seção do §5 "direitos que muitos desconhecem"),
+`/direitos/[id]` (ficha completa do §6 com base legal, link oficial, data de
+verificação e alerta automático quando a verificação passa de 180 dias) e
+`/direitos/descubra` (questionário §8).
+
+**Carga inicial:** 20 fichas federais curadas em `db/07-seed-f4.sql`
+(BPC, Bolsa Família, Tarifa Social, Farmácia Popular, Passe Livre, isenções
+de IR/IPI, FGTS doença grave, Defensoria, Pé-de-Meia, salário-maternidade,
+seguro-desemprego, CIPTEA, Auxílio-Inclusão…), com valores expressos pela
+fórmula legal (nunca cifra que expira) e vínculos doença/condição sempre
+nuançados (§4.8: diagnóstico ≠ incapacidade ≠ deficiência ≠ benefício).
+
+**Fora do software, por natureza:** os módulos 8–9 do prompt (capítulos por
+UF e pesquisa municipal) são operação de pesquisa contínua conduzida com o
+próprio prompt mestre — cada ficha nova entra `RASCUNHO` e só publica se
+sobreviver aos vetos F4-RG-01..05.
+
+```
+# públicos
+GET  /v1/direitos?area=&publico=&confianca=&q=&pouco_conhecidos=1
+GET  /v1/direitos/areas      GET /v1/direitos/publicos     GET /v1/direitos/condicoes
+GET  /v1/direitos/:id
+POST /v1/direitos/descubra   # perfil sem identificadores → provável/avaliação/inelegível
+
+# ADMIN
+POST /v1/admin/direitos                  # nasce RASCUNHO
+POST /v1/admin/direitos/:id/publicar     # passa pelos vetos F4-RG-01..05
+```
+
+Banco: `psql -d itmt -f db/06-f4.sql -f db/07-seed-f4.sql` (o compose já monta os dois).
+
 ## Detalhe de implementação (rastreado ao PRD)
 
 | Regra / RF | Onde | Como verificar |
@@ -162,7 +221,7 @@ municípios entregues) são metas de operação de campo medidas pelo painel.
 | **RF-PORTAL-001** busca tolerante a acento | `unaccent` no Postgres | `GET /v1/municipios?q=varzea` → Várzea Grande |
 | **RF-PORTAL-006** comparação | `GET /v1/indicadores/:id/comparacao` | município × RGI × RGInt × Estado numa chamada |
 | **RF-PORTAL-011/013** ficha municipal SSR | `web/app/municipio/[codigo]` | HTML já vem com os valores e a régua (SEO) |
-| **§15** Meridiano | `web/app/globals.css` | tokens exatos do PRD; régua de procedência como assinatura; semáforo forma+rótulo+cor |
+| **§15** Design system | `web/app/globals.css` | tokens do Territorial Intelligence System (cor, tipografia Inter, elevação tonal); régua de procedência; chips de status por cor semântica |
 | **RF-API-001** versionamento | prefixo `/v1` global | — |
 
 ### Endpoints
