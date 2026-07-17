@@ -37,7 +37,10 @@ export function carregarSegredos(): void {
   carregarDotEnv();
   const senha = process.env.ITMT_COFRE_SENHA;
   if (!senha) return; // sem senha-mestra, o cofre fica fechado (RG-05: nada quebra)
-  for (const [nome, variavel] of [['anthropic', 'ANTHROPIC_API_KEY']] as const) {
+  for (const [nome, variavel] of [
+    ['anthropic', 'ANTHROPIC_API_KEY'],
+    ['openai', 'OPENAI_API_KEY'],
+  ] as const) {
     if (process.env[variavel]) continue;
     const arquivo = join(process.cwd(), '.cofre', `${nome}.json`);
     if (!existsSync(arquivo)) continue;

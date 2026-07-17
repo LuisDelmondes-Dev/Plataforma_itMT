@@ -45,6 +45,67 @@ export class ProvedorAnthropic implements ProvedorLlm {
   }
 }
 
+/** Provedor OpenAI — mesma borda, mesmo contrato (RNF-09). */
+export class ProvedorOpenAI implements ProvedorLlm {
+  nome() { return `openai:${process.env.OPENAI_MODELO ?? 'gpt-4o-mini'}`; }
+  disponivel() { return Boolean(process.env.OPENAI_API_KEY); }
+  async completar(sistema: string, usuario: string): Promise<string> {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODELO ?? 'gpt-4o-mini',
+        max_completion_tokens: 500,
+        messages: [
+          { role: 'system', content: sistema },
+          { role: 'user', content: usuario },
+        ],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!r.ok) {
+      const corpo = await r.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new Error(`Provedor LLM: HTTP ${r.status} — ${corpo?.error?.message ?? 'sem detalhe'}`);
+    }
+    const d = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    return d.choices?.[0]?.message?.content ?? '';
+  }
+}
+
+/**
+ * CASCATA — os provedores se auxiliam: tenta na ordem e, quando um
+ * falha (sem créditos, fora do ar, timeout), o próximo assume na mesma
+ * chamada. Vale para as DUAS bordas (A01 intérprete e A05 narrador);
+ * atrás de todos continua o léxico determinístico (RG-05).
+ */
+export class ProvedorEmCascata implements ProvedorLlm {
+  private readonly log = new Logger('Xingu.Cascata');
+  private ultimoQueRespondeu: string;
+  constructor(readonly membros: ProvedorLlm[]) {
+    this.ultimoQueRespondeu = membros[0]?.nome() ?? 'lexico';
+  }
+  nome() { return this.ultimoQueRespondeu; }
+  disponivel() { return this.membros.some((m) => m.disponivel()); }
+  async completar(sistema: string, usuario: string): Promise<string> {
+    let ultimoErro: Error = new Error('sem provedor');
+    for (const m of this.membros) {
+      if (!m.disponivel()) continue;
+      try {
+        const resposta = await m.completar(sistema, usuario);
+        this.ultimoQueRespondeu = m.nome();
+        return resposta;
+      } catch (e) {
+        ultimoErro = e as Error;
+        this.log.warn(`${m.nome()} falhou (${ultimoErro.message}) — tentando o próximo provedor.`);
+      }
+    }
+    throw ultimoErro;
+  }
+}
+
 /** Sem chave configurada, a Xingú degrada para o intérprete léxico (RG-05). */
 export class ProvedorNulo implements ProvedorLlm {
   nome() { return 'lexico'; }
@@ -55,8 +116,14 @@ export class ProvedorNulo implements ProvedorLlm {
 export function criarProvedor(): ProvedorLlm {
   const escolha = process.env.XINGU_PROVEDOR ?? 'auto';
   if (escolha === 'lexico') return new ProvedorNulo();
-  const a = new ProvedorAnthropic();
-  return a.disponivel() ? a : new ProvedorNulo();
+  // Ordem da cascata: XINGU_PROVEDOR=openai põe a OpenAI na frente.
+  const anthropic = new ProvedorAnthropic();
+  const openai = new ProvedorOpenAI();
+  const ordem = escolha === 'openai' ? [openai, anthropic] : [anthropic, openai];
+  const vivos = ordem.filter((p) => p.disponivel());
+  if (vivos.length === 0) return new ProvedorNulo();
+  if (vivos.length === 1) return vivos[0];
+  return new ProvedorEmCascata(vivos);
 }
 
 /**
