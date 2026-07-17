@@ -9,7 +9,7 @@
     "verificar-cadeia": "node scripts/verificar-cadeia.mjs",
     "ingest:territorio": "node scripts/ingestar-ibge-territorio.mjs",
     "ingest:populacao": "node scripts/ingestar-ibge-populacao.mjs",
-    "test": "npm run build && node --test test/e2e.mjs test/xingu.e2e.mjs",
+    "test": "npm run build && node --test test/e2e.mjs test/xingu.e2e.mjs test/f3.e2e.mjs",
     "ingest:pib": "node scripts/ingestar-ibge-agregado.mjs pib",
     "ingest:csv": "node scripts/ingestar-csv.mjs",
     "alerta:fontes": "node scripts/alerta-fontes.mjs",

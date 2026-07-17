@@ -7,7 +7,7 @@ Monorepo com três partes:
 |---|---|---|
 | `db/` | PostgreSQL 16 | DDL do núcleo F1 + seed demonstrativo |
 | `api/` | NestJS + pg | **Motor determinístico** — território, taxonomia, consulta, rollup, auditoria |
-| `web/` | Next.js 14 (App Router) | Portal com design system **Meridiano** |
+| `web/` | Next.js 14 (App Router) | Portal com sidebar retrátil e design system **Territorial Intelligence System** |
 
 ## Subir tudo (Docker)
 
@@ -114,6 +114,39 @@ export XINGU_MODELO=claude-haiku-4-5   # ou outro; A15 (custo) entra no roadmap 
 
 Sem a chave, nada quebra: `RG-05` por construção.
 
+## F3 — Mapeamento próprio (código-completo)
+
+Módulos `GEO`, `MTIMAGENS`/`VIDEOS` e `CAMPO`. A marca do F3: **todos os vetos são
+de banco** — triggers PL/pgSQL em `db/04-f3.sql`, provados por teste tentando
+violar cada um, inclusive por SQL direto.
+
+| Regra | Veto | Evidência |
+|---|---|---|
+| **RF-GEO-007 / RC-02** | produto `RESTRITO`/`CLASSIFICADO` não publica — trigger | teste → 422 com a mensagem do banco |
+| **RC-03 / A11** | imagem de via pública sem `AnonimizacaoAplicada` não publica; a verificação é registrada com responsável na trilha | teste veto→anonimiza→publica |
+| **RC-04 / RF-IMG-006** | pessoa identificável sem `TermoConsentimento` vinculado não publica; termo arquivado com hash SHA-256 | teste |
+| **A12 / RF-IMG-003** | ativo sem licença explícita não publica; toda mídia carrega autor + licença (cadeia de direitos) | teste |
+| **RF-IMG-002** | contribuição externa exige moderação prévia APROVADA | teste |
+| **RF-IMG-005 / RNF-10** | vídeo sem legenda **e** transcrição não publica | teste |
+| **RF-CAMPO-002** | missão sem autorização **vigente na data** não vai a campo nem é executada — trigger consulta `Autorizacao` | teste veto→vincula→executa |
+| **RF-GEO-009 / RC-11** | cópia soberana do 360° é coluna `NOT NULL` — restrição estrutural | DDL |
+| **RF-GEO-004 / RNF-13** | projeto de levantamento só nasce com autorizações, RT, GSD, acurácia; SRC travado em SIRGAS 2000 por `CHECK` | teste 400 |
+
+**Entregas de superfície:** `/geoportal` (produtos publicados com metadados completos,
+cobertura de imagem de rua ● Publicado ITMT / ◐ Preexistente / ○ Pendente, projetos
+estruturantes), `/acervo` (busca pública — só sobrevive ao filtro o que passou pelos
+vetos) e `/campo` (app do operador, **offline-first**: capturas entram em fila local
+com GNSS/checklist/momento-da-captura e sincronizam quando houver rede; painel das
+4 frentes por município — RF-CAMPO-004).
+
+**Fora do software, por natureza:** a fotogrametria em si (nuvem de pontos →
+ortomosaico/MDS/MDT) roda em ODM ou suíte proprietária (ADR-04) e **registra** seus
+produtos aqui; o WMS/WFS é servido pelo GeoServer (perfil `geo` no compose:
+`docker compose --profile geo up`); e o borrão de rostos/placas é executado por
+ferramenta de visão — o sistema garante que **sem a verificação registrada, nada
+publica**, que é exatamente o que RC-03 pede do software. KR2.1/2.2/2.3 (30
+municípios entregues) são metas de operação de campo medidas pelo painel.
+
 ## Detalhe de implementação (rastreado ao PRD)
 
 | Regra / RF | Onde | Como verificar |
@@ -129,7 +162,7 @@ Sem a chave, nada quebra: `RG-05` por construção.
 | **RF-PORTAL-001** busca tolerante a acento | `unaccent` no Postgres | `GET /v1/municipios?q=varzea` → Várzea Grande |
 | **RF-PORTAL-006** comparação | `GET /v1/indicadores/:id/comparacao` | município × RGI × RGInt × Estado numa chamada |
 | **RF-PORTAL-011/013** ficha municipal SSR | `web/app/municipio/[codigo]` | HTML já vem com os valores e a régua (SEO) |
-| **§15** Meridiano | `web/app/globals.css` | tokens exatos do PRD; régua de procedência como assinatura; semáforo forma+rótulo+cor |
+| **§15** Design system | `web/app/globals.css` | tokens do Territorial Intelligence System (cor, tipografia Inter, elevação tonal); régua de procedência; chips de status por cor semântica |
 | **RF-API-001** versionamento | prefixo `/v1` global | — |
 
 ### Endpoints
