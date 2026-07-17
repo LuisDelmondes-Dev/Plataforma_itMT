@@ -1,3 +1,6 @@
+import { carregarSegredos } from './common/cofre';
+carregarSegredos(); // cofre AES-256-GCM → process.env, ANTES de qualquer módulo
+
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { AppModule } from './app.module';

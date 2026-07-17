@@ -16,6 +16,7 @@ const I = {
   cobertura: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="4" y="4" width="7" height="7" rx="1.2" /><rect x="13" y="4" width="7" height="7" rx="1.2" /><rect x="4" y="13" width="7" height="7" rx="1.2" /><rect x="13" y="13" width="7" height="7" rx="1.2" /></svg>,
   transparencia: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 4.5 6v5c0 4.6 3.2 8 7.5 10 4.3-2 7.5-5.4 7.5-10V6L12 3Z" /><path d="m9 12 2 2 4-4.5" /></svg>,
   direitos: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16M5 7h14M5 7 3 12a3.2 3.2 0 0 0 6.4 0L7 7M17 7l-2.4 5a3.2 3.2 0 0 0 6.4 0L19 7M8.5 20h7" /></svg>,
+  fontes: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3" /><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6" /></svg>,
 };
 
 const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof typeof I }[] }[] = [
@@ -26,6 +27,7 @@ const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof 
       { href: '/consulta', rotulo: 'Indicadores', icone: 'indicadores' },
       { href: '/xingu', rotulo: 'IA Xingú', icone: 'xingu' },
       { href: '/municipio/5103403', rotulo: 'Fichas municipais', icone: 'ficha' },
+      { href: '/fontes', rotulo: 'Agentes de fonte', icone: 'fontes' },
     ],
   },
   {

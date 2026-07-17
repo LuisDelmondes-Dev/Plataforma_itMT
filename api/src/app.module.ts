@@ -11,6 +11,7 @@ import { TransparenciaModule } from './transparencia/transparencia.module';
 import { XinguModule } from './xingu/xingu.module';
 import { ProducaoModule } from './producao/producao.module';
 import { DireitosModule } from './direitos/direitos.module';
+import { AgentesFonteModule } from './fontes/agentes-fonte.module';
 import { SaudeController } from './common/saude.controller';
 
 // Rate limit global: ativo em produção (ou forçado por RATE_LIMIT=1);
@@ -34,6 +35,7 @@ const rateLimitAtivo =
     XinguModule,
     ProducaoModule,
     DireitosModule,
+    AgentesFonteModule,
   ],
   controllers: [SaudeController],
   providers: rateLimitAtivo ? [{ provide: APP_GUARD, useClass: ThrottlerGuard }] : [],

@@ -206,6 +206,40 @@ POST /v1/admin/direitos/:id/publicar     # passa pelos vetos F4-RG-01..05
 
 Banco: `psql -d itmt -f db/06-f4.sql -f db/07-seed-f4.sql` (o compose já monta os dois).
 
+## F5 — Agentes de fonte + cofre de segredos (código-completo)
+
+**Um agente por fonte de dados** (`/fontes` no portal, `/v1/agentes/fontes` na API),
+com uma regra só: **banco primeiro**. Se a informação existe no banco e está dentro
+da validade da fonte, o agente responde do banco sem tocar a internet; se falta ou
+venceu, ele executa o conector oficial (Bronze→Prata→Ouro, procedência, auditoria)
+e mostra ao usuário o log da pesquisa e a situação antes/depois. Fontes que exigem
+arquivo oficial (CNES, INEP, SESP, PAM) não inventam download: o agente informa o
+passo manual — ausência é resposta (RN-005). Tentativas por período em cascata
+(ex.: PIB 2024 indisponível → 2023 automaticamente); mutex por agente; evento
+`AGENTE_FONTE_PESQUISA` na trilha imutável. Indicador novo segue nascendo
+`EM_ANALISE` até parecer humano (RG-09).
+
+**Cofre de segredos** (`api/scripts/cofre.mjs` + `src/common/cofre.ts`):
+a `ANTHROPIC_API_KEY` nunca fica em texto claro em disco — é guardada em
+`.cofre/anthropic.json` cifrada com **AES-256-GCM** (chave derivada por scrypt
+N=2¹⁵ da senha-mestra `ITMT_COFRE_SENHA`). No bootstrap, o segredo é decifrado
+**só em memória**. `.cofre/` e `.env` estão no `.gitignore`.
+
+```bash
+node scripts/cofre.mjs gerar-senha                       # senha-mestra forte
+node scripts/cofre.mjs guardar anthropic <chave> --senha <mestra>
+echo "ITMT_COFRE_SENHA=<mestra>" >> api/.env             # fora do git
+```
+
+**Banco de teste separado:** a suíte e2e valida contra o seed demonstrativo;
+com o banco dev carregado de dados reais, rode os testes num banco recriado
+do zero (mesmo fluxo do CI):
+
+```bash
+createdb itmt_teste && DATABASE_URL=postgres://itmt:itmt@localhost:5432/itmt_teste npm run migrar
+DATABASE_URL=postgres://itmt_app:itmt_app@localhost:5432/itmt_teste XINGU_PROVEDOR=lexico npm test
+```
+
 ## Produção (endurecimento aplicado)
 
 O repositório traz o caminho de produção pronto; o que resta é operação
