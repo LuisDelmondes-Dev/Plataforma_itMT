@@ -22,7 +22,7 @@ const get = async (path, headers = {}) => {
 };
 
 before(async () => {
-  api = spawn('node', ['dist/main.js'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+  api = spawn('node', ['dist/main.js'], { env: { ...process.env, PORT: String(PORT), AGENTES_AUTO: '0' }, stdio: 'ignore' });
   for (let i = 0; i < 40; i++) {
     try { if ((await fetch(`${BASE}/temas`)).ok) return; } catch {}
     await new Promise((r) => setTimeout(r, 500));

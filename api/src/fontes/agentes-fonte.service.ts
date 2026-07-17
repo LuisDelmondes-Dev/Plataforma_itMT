@@ -26,6 +26,8 @@ interface DefAgente {
   nome: string;
   fonte: string;
   tipo: 'API' | 'ARQUIVO';
+  /** nome do indicador no catálogo que este agente alimenta (para a auto-busca) */
+  indicador?: string;
   descricao: string;
   /** dias de validade de uma carga antes de ser considerada desatualizada */
   validadeDias: number;
@@ -95,7 +97,7 @@ const AGENTES: DefAgente[] = [
     comandos: () => [['scripts/ingestar-ibge-territorio.mjs']],
   },
   {
-    slug: 'populacao', nome: 'População estimada',
+    slug: 'populacao', nome: 'População estimada', indicador: 'População estimada',
     fonte: 'IBGE — Estimativas de População (SIDRA 6579)', tipo: 'API', validadeDias: 366,
     descricao: 'População estimada por município — tema Demografia.',
     verificar(db) { return situacaoIndicador(db, 'População estimada', '%Estimativas de População%', this.validadeDias); },
@@ -105,7 +107,7 @@ const AGENTES: DefAgente[] = [
     ],
   },
   {
-    slug: 'pib', nome: 'PIB municipal',
+    slug: 'pib', nome: 'PIB municipal', indicador: 'PIB municipal',
     fonte: 'IBGE — PIB dos Municípios (SIDRA 5938)', tipo: 'API', validadeDias: 366,
     descricao: 'Produto Interno Bruto por município — tema Economia Privada (divulgação com ~2 anos de defasagem).',
     verificar(db) { return situacaoIndicador(db, 'PIB municipal', '%Produto Interno Bruto%', this.validadeDias); },
@@ -148,6 +150,9 @@ const AGENTES: DefAgente[] = [
 export class AgentesFonteService {
   private readonly log = new Logger('AgentesFonte');
   private readonly emExecucao = new Set<string>();
+  /** memo: última verificação por agente, para a auto-busca ficar barata */
+  private readonly verificadoEm = new Map<string, number>();
+  private static readonly MEMO_MS = 60_000;
 
   constructor(private readonly db: DatabaseService, private readonly trilha: AuditoriaService) {}
 
@@ -209,6 +214,31 @@ export class AgentesFonteService {
       };
     } finally {
       this.emExecucao.delete(slug);
+    }
+  }
+
+  /**
+   * AUTO-BUSCA: chamada por TODA consulta do usuário que der ausência.
+   * Banco primeiro (a consulta já falhou no banco) → se o agente da fonte
+   * estiver vencido/vazio, busca na fonte oficial e retorna true para a
+   * consulta tentar de novo. Rápido por construção: memo de 60s por
+   * agente, e só um fetch por vez (mutex). AGENTES_AUTO=0 desliga.
+   */
+  async garantirParaIndicador(indicadorNome: string): Promise<boolean> {
+    if (process.env.AGENTES_AUTO === '0') return false;
+    const agente = AGENTES.find((a) => a.tipo === 'API' && a.indicador === indicadorNome);
+    if (!agente) return false;
+    const ultima = this.verificadoEm.get(agente.slug);
+    if (ultima && Date.now() - ultima < AgentesFonteService.MEMO_MS) return false;
+    if (this.emExecucao.has(agente.slug)) return false;
+    try {
+      const r = await this.pesquisar(agente.slug);
+      this.verificadoEm.set(agente.slug, Date.now());
+      return r.origem === 'INTERNET' && r.sucesso === true;
+    } catch (e) {
+      this.log.warn(`auto-busca ${agente.slug} falhou: ${(e as Error).message}`);
+      this.verificadoEm.set(agente.slug, Date.now());
+      return false;
     }
   }
 

@@ -36,7 +36,10 @@ export class ProvedorAnthropic implements ProvedorLlm {
       }),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!r.ok) throw new Error(`Provedor LLM: HTTP ${r.status}`);
+    if (!r.ok) {
+      const corpo = await r.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new Error(`Provedor LLM: HTTP ${r.status} — ${corpo?.error?.message ?? 'sem detalhe'}`);
+    }
     const d = (await r.json()) as { content?: { type: string; text?: string }[] };
     return d.content?.find((c) => c.type === 'text')?.text ?? '';
   }

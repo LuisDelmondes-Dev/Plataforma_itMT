@@ -6,6 +6,7 @@ import {
 import { DatabaseService } from '../database/database.service';
 import { TerritorioService, Recorte } from '../territorio/territorio.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AgentesFonteService } from '../fontes/agentes-fonte.service';
 import { Procedencia, ValorComProcedencia } from '../common/procedencia';
 
 interface LinhaObs {
@@ -40,6 +41,7 @@ export class IndicadoresService {
     private readonly db: DatabaseService,
     private readonly territorio: TerritorioService,
     private readonly auditoria: AuditoriaService,
+    private readonly agentes: AgentesFonteService,
   ) {}
 
   private async meta(indicadorId: number): Promise<MetaIndicador> {
@@ -103,7 +105,36 @@ export class IndicadoresService {
    * Consulta canônica: (recorte, código, indicador, período) → valor + procedência.
    * Rollup determinístico conforme Indicador_TipoAgregacao (RN-003).
    */
+  /**
+   * TODA busca do usuário passa aqui (consulta, comparação, exportação e
+   * Xingú). Fluxo: banco primeiro; se der ausência, o agente da fonte
+   * decide se busca na internet (só quando falta/venceu — F5), atualiza o
+   * banco e a consulta é refeita UMA vez. Se ainda faltar, a ausência é
+   * resposta honesta (RN-005) — nunca estimativa.
+   */
   async consultar(params: {
+    indicadorId: number;
+    recorte: Recorte;
+    codigo: string | null;
+    dataReferencia: string;
+  }): Promise<ValorComProcedencia> {
+    try {
+      return await this.consultarNucleo(params);
+    } catch (e) {
+      if (!(e instanceof NotFoundException)) throw e;
+      const nome = await this.db.query<{ nome: string }>(
+        `SELECT "Indicador_Nome" AS nome FROM "Indicador" WHERE "Indicador_Id"=$1`,
+        [params.indicadorId],
+      );
+      const buscou = nome.rows[0]
+        ? await this.agentes.garantirParaIndicador(nome.rows[0].nome)
+        : false;
+      if (!buscou) throw e;
+      return this.consultarNucleo(params); // segunda e última tentativa
+    }
+  }
+
+  private async consultarNucleo(params: {
     indicadorId: number;
     recorte: Recorte;
     codigo: string | null;

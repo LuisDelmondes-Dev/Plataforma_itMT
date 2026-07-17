@@ -22,7 +22,7 @@ const perguntar = async (pergunta, extra = {}) => {
 
 before(async () => {
   api = spawn('node', ['dist/main.js'], {
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(PORT), AGENTES_AUTO: '0' },
     stdio: 'ignore',
   });
   for (let i = 0; i < 40; i++) {

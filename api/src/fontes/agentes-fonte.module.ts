@@ -9,5 +9,6 @@ import { AgentesFonteController } from './agentes-fonte.controller';
   imports: [DatabaseModule, AuditoriaModule],
   controllers: [AgentesFonteController],
   providers: [AgentesFonteService],
+  exports: [AgentesFonteService],
 })
 export class AgentesFonteModule {}
