@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { DatabaseModule } from './database/database.module';
+import { AuthModule } from './auth/auth.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { TerritorioModule } from './territorio/territorio.module';
 import { TaxonomiaModule } from './taxonomia/taxonomia.module';
@@ -26,6 +27,7 @@ const rateLimitAtivo =
       { name: 'medio', ttl: 60_000, limit: Number(process.env.RATE_LIMIT_MIN ?? 300) },
     ]),
     DatabaseModule,
+    AuthModule,
     AuditoriaModule,
     TerritorioModule,
     TaxonomiaModule,

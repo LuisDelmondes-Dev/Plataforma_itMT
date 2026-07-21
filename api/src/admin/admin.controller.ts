@@ -16,11 +16,16 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { ValidacaoTecnicaService } from './validacao-tecnica.service';
+import { AgentExecutionService } from '../auth/agent-execution.service';
+import { verificarToken } from '../auth/token';
 
 /**
- * Autenticação do módulo ADMIN por token Bearer (RNF-05, recorte MVP).
- * Em produção: SSO institucional com MFA obrigatório — este guard é o
- * ponto único de troca. Token: variável ADMIN_TOKEN.
+ * Autenticação do módulo ADMIN por Bearer. Aceita DOIS formatos, para
+ * compatibilidade retroativa (RNF-05):
+ *  1) o ADMIN_TOKEN estático (dev/CI, e integrações internas); e
+ *  2) um token de sessão assinado (RF012) com papel ADMIN ou CURADOR.
+ * Em produção o caminho (1) some em favor de SSO/MFA — este guard é o
+ * ponto único de troca.
  */
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -28,11 +33,18 @@ export class AdminGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest();
     const auth: string = req.headers['authorization'] ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    // (1) ADMIN_TOKEN estático — comparação em tempo constante (não vaza por timing).
     const esperado = process.env.ADMIN_TOKEN ?? 'itmt-admin-dev';
-    // comparação em tempo constante — não vaza o prefixo por timing
     const a = createHash('sha256').update(token).digest();
     const b = createHash('sha256').update(esperado).digest();
-    return timingSafeEqual(a, b);
+    if (timingSafeEqual(a, b)) return true;
+    // (2) token de sessão assinado com papel de gestão.
+    const sessao = verificarToken(token);
+    if (sessao && (sessao.papel === 'ADMIN' || sessao.papel === 'CURADOR')) {
+      req.usuario = sessao;
+      return true;
+    }
+    return false;
   }
 }
 
@@ -68,7 +80,14 @@ export class AdminController {
     private readonly db: DatabaseService,
     private readonly auditoria: AuditoriaService,
     private readonly validacao: ValidacaoTecnicaService,
+    private readonly registry: AgentExecutionService,
   ) {}
+
+  /** Registry (RF004): últimas execuções de agentes para inspeção operacional. */
+  @Get('agentes/execucoes')
+  execucoes() {
+    return this.registry.recentes(100);
+  }
 
   /** Agente de Validação Técnica: checagens automáticas (não decide — RG-09). */
   @Get('indicadores/:id/validacao')
