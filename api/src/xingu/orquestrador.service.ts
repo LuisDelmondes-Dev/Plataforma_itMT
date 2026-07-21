@@ -3,7 +3,8 @@ import { IndicadoresService } from '../indicadores/indicadores.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { ValorComProcedencia } from '../common/procedencia';
 import { detectarInjecao } from './sentinela';
-import { InterpreteService, PROMPT_VERSAO } from './interprete.service';
+import { InterpreteService, PROMPT_VERSAO, RefLlm } from './interprete.service';
+import { CustoService } from './custo.service';
 import { CatalogoService, normalizar } from './interprete-lexico';
 import { PlanoConsulta, Clarificacao } from './tipos';
 import {
@@ -53,6 +54,7 @@ export class OrquestradorService {
     private readonly indicadores: IndicadoresService,
     private readonly catalogo: CatalogoService,
     private readonly trilha: AuditoriaService,
+    private readonly custo: CustoService,
   ) {}
 
   async perguntar(
@@ -146,12 +148,14 @@ export class OrquestradorService {
     }
     estados.push('EXECUTADA');
 
-    // ---- A05: Narrador (slots) ----
+    // ---- A05: Narrador (slots) ---- A15: só usa LLM se dentro do orçamento.
     let narrativa: string;
     let vetos = 0;
-    if (this.interprete.provedor.disponivel()) {
+    if (this.interprete.provedor.disponivel() && (await this.custo.dentroDoOrcamento())) {
       try {
-        narrativa = await narrarComLlm(this.interprete.provedor, resultado, pergunta);
+        const ref: RefLlm = {};
+        narrativa = await narrarComLlm(this.interprete.provedor, resultado, pergunta, ref);
+        await this.custo.registrar('A05', ref.provedor ?? this.interprete.provedor.nome(), ref.tokensEntrada, ref.tokensSaida);
       } catch {
         narrativa = narrativaDeterministica(resultado);
       }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CatalogoService, InterpreteLexico, SaidaInterprete, normalizar } from './interprete-lexico';
 import { validarPlano } from './tipos';
 import { envelopar } from './sentinela';
+import { CustoService } from './custo.service';
 
 /** Versão do prompt — registrada na trilha de toda resposta (RF-CHAT-009). */
 export const PROMPT_VERSAO = 'xingu-interprete-v1.0';
@@ -11,19 +12,25 @@ export const PROMPT_VERSAO = 'xingu-interprete-v1.0';
  * A plataforma nunca depende de fornecedor único: trocar de provedor
  * é implementar esta interface e apontar XINGU_PROVEDOR.
  */
+/** Saída por-requisição da chamada LLM: quem respondeu e quanto consumiu (A15). */
+export interface RefLlm {
+  provedor?: string;
+  tokensEntrada?: number;
+  tokensSaida?: number;
+}
+
 export interface ProvedorLlm {
   nome(): string;
   disponivel(): boolean;
-  // `ref` (opcional) recebe o nome do provedor que efetivamente respondeu —
-  // usado pela cascata para atribuir corretamente na trilha, sem depender de
-  // estado mutável compartilhado entre requisições concorrentes.
-  completar(sistema: string, usuario: string, ref?: { provedor?: string }): Promise<string>;
+  // `ref` (opcional) recebe o provedor que respondeu e o consumo de tokens —
+  // por-requisição, sem estado mutável compartilhado entre chamadas concorrentes.
+  completar(sistema: string, usuario: string, ref?: RefLlm): Promise<string>;
 }
 
 export class ProvedorAnthropic implements ProvedorLlm {
   nome() { return `anthropic:${process.env.XINGU_MODELO ?? 'claude-haiku-4-5'}`; }
   disponivel() { return Boolean(process.env.ANTHROPIC_API_KEY); }
-  async completar(sistema: string, usuario: string): Promise<string> {
+  async completar(sistema: string, usuario: string, ref?: RefLlm): Promise<string> {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -43,7 +50,11 @@ export class ProvedorAnthropic implements ProvedorLlm {
       const corpo = await r.json().catch(() => null) as { error?: { message?: string } } | null;
       throw new Error(`Provedor LLM: HTTP ${r.status} — ${corpo?.error?.message ?? 'sem detalhe'}`);
     }
-    const d = (await r.json()) as { content?: { type: string; text?: string }[] };
+    const d = (await r.json()) as {
+      content?: { type: string; text?: string }[];
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+    if (ref) { ref.tokensEntrada = d.usage?.input_tokens ?? 0; ref.tokensSaida = d.usage?.output_tokens ?? 0; }
     return d.content?.find((c) => c.type === 'text')?.text ?? '';
   }
 }
@@ -52,7 +63,7 @@ export class ProvedorAnthropic implements ProvedorLlm {
 export class ProvedorOpenAI implements ProvedorLlm {
   nome() { return `openai:${process.env.OPENAI_MODELO ?? 'gpt-4o-mini'}`; }
   disponivel() { return Boolean(process.env.OPENAI_API_KEY); }
-  async completar(sistema: string, usuario: string): Promise<string> {
+  async completar(sistema: string, usuario: string, ref?: RefLlm): Promise<string> {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -73,7 +84,11 @@ export class ProvedorOpenAI implements ProvedorLlm {
       const corpo = await r.json().catch(() => null) as { error?: { message?: string } } | null;
       throw new Error(`Provedor LLM: HTTP ${r.status} — ${corpo?.error?.message ?? 'sem detalhe'}`);
     }
-    const d = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    const d = (await r.json()) as {
+      choices?: { message?: { content?: string } }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    if (ref) { ref.tokensEntrada = d.usage?.prompt_tokens ?? 0; ref.tokensSaida = d.usage?.completion_tokens ?? 0; }
     return d.choices?.[0]?.message?.content ?? '';
   }
 }
@@ -92,12 +107,12 @@ export class ProvedorEmCascata implements ProvedorLlm {
   }
   nome() { return this.ultimoQueRespondeu; }
   disponivel() { return this.membros.some((m) => m.disponivel()); }
-  async completar(sistema: string, usuario: string, ref?: { provedor?: string }): Promise<string> {
+  async completar(sistema: string, usuario: string, ref?: RefLlm): Promise<string> {
     let ultimoErro: Error = new Error('sem provedor');
     for (const m of this.membros) {
       if (!m.disponivel()) continue;
       try {
-        const resposta = await m.completar(sistema, usuario);
+        const resposta = await m.completar(sistema, usuario, ref); // ref carrega tokens do membro
         this.ultimoQueRespondeu = m.nome();
         if (ref) ref.provedor = m.nome(); // atribuição por-requisição (sem corrida)
         return resposta;
@@ -144,16 +159,19 @@ export class InterpreteService {
   constructor(
     private readonly catalogo: CatalogoService,
     private readonly lexico: InterpreteLexico,
+    private readonly custo: CustoService,
   ) {}
 
   async interpretar(
     pergunta: string,
     contexto?: { indicador_id?: number; codigo_ibge?: string },
   ): Promise<SaidaInterprete & { interprete: string }> {
-    if (this.provedor.disponivel()) {
+    // A15: só usa o LLM se disponível E dentro do orçamento; estourou → léxico.
+    if (this.provedor.disponivel() && (await this.custo.dentroDoOrcamento())) {
       try {
-        const ref: { provedor?: string } = {}; // atribuição por-requisição
+        const ref: RefLlm = {}; // por-requisição (provedor + tokens)
         const saida = await this.viaLlm(pergunta, contexto, ref);
+        await this.custo.registrar('A01', ref.provedor ?? this.provedor.nome(), ref.tokensEntrada, ref.tokensSaida);
         if (saida) return { ...saida, interprete: ref.provedor ?? this.provedor.nome() };
       } catch (e) {
         this.log.warn(`LLM indisponível/inválido (${(e as Error).message}); degradando para léxico (RG-05).`);
@@ -166,7 +184,7 @@ export class InterpreteService {
   private async viaLlm(
     pergunta: string,
     contexto?: { indicador_id?: number; codigo_ibge?: string },
-    ref?: { provedor?: string },
+    ref?: RefLlm,
   ): Promise<SaidaInterprete | null> {
     const cat = await this.catalogo.obter();
     const sistema = [

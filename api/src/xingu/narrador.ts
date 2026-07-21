@@ -1,5 +1,5 @@
 import { ValorComProcedencia } from '../common/procedencia';
-import { ProvedorLlm } from './interprete.service';
+import { ProvedorLlm, RefLlm } from './interprete.service';
 import { envelopar } from './sentinela';
 
 /**
@@ -49,6 +49,7 @@ export async function narrarComLlm(
   provedor: ProvedorLlm,
   r: ValorComProcedencia,
   pergunta: string,
+  ref?: RefLlm,
 ): Promise<string> {
   const sistema = [
     'Você redige UMA frase curta em português brasileiro respondendo à pergunta do usuário,',
@@ -58,7 +59,7 @@ export async function narrarComLlm(
     `Contexto do resultado: indicador "${r.indicador}" (${r.unidade}), local "${r.local}", agregação ${r.agregacao}.`,
   ].join('\n');
   // RG-04: mesmo após A14, a pergunta entra envelopada como DADO no prompt.
-  const texto = await provedor.completar(sistema, envelopar(pergunta));
+  const texto = await provedor.completar(sistema, envelopar(pergunta), ref);
   return preencherSlots(texto.trim(), slotsDe(r));
 }
 

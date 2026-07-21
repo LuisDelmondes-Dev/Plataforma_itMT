@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Headers, Post } from '@nestjs/common';
 import { OrquestradorService } from './orquestrador.service';
-import { InterpreteService, ProvedorEmCascata, ProvedorLlm } from './interprete.service';
+import { InterpreteService, ProvedorEmCascata, ProvedorLlm, RefLlm } from './interprete.service';
+import { CustoService } from './custo.service';
 
 interface PerguntaDto {
   pergunta: string;
@@ -12,7 +13,14 @@ export class XinguController {
   constructor(
     private readonly orquestrador: OrquestradorService,
     private readonly interprete: InterpreteService,
+    private readonly custo: CustoService,
   ) {}
+
+  /** A15: consumo do LLM (dia/mês) vs teto. */
+  @Get('custo')
+  custoDoLlm() {
+    return this.custo.resumo();
+  }
 
   // Cache do autodiagnóstico: o ping consome tokens em cada provedor, então
   // GETs repetidos (ex.: banner da UI) reusam o resultado por 60s.
@@ -45,7 +53,9 @@ export class XinguController {
       membros.map(async (m) => {
         if (!m.disponivel()) return { provedor: m.nome(), llm: 'INATIVO', detalhe: 'Sem chave carregada.' };
         try {
-          await m.completar('Responda apenas: ok', 'ok');
+          const ref: RefLlm = {};
+          await m.completar('Responda apenas: ok', 'ok', ref);
+          await this.custo.registrar('SITUACAO', m.nome(), ref.tokensEntrada, ref.tokensSaida);
           return { provedor: m.nome(), llm: 'ATIVO', detalhe: 'Respondendo normalmente.' };
         } catch (e) {
           return { provedor: m.nome(), llm: 'DEGRADADO', detalhe: (e as Error).message };
@@ -62,6 +72,7 @@ export class XinguController {
         anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
         openai: Boolean(process.env.OPENAI_API_KEY),
       },
+      custo: await this.custo.resumo(),
       provedores,
     };
   }
