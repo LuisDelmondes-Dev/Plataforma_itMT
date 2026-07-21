@@ -56,6 +56,17 @@ export class IndicadoresService {
     return r.rows[0];
   }
 
+  /** Resolve o id de um indicador APROVADO pelo nome (catálogo é dado, não código). */
+  private async idIndicadorPorNome(nome: string): Promise<number | null> {
+    const r = await this.db.query<{ id: number }>(
+      `SELECT "Indicador_Id" AS id FROM "Indicador"
+        WHERE "Indicador_Nome" = $1 AND "Indicador_StatusValidacao" = 'APROVADO'
+        ORDER BY "Indicador_Id" LIMIT 1`,
+      [nome],
+    );
+    return r.rows[0]?.id ?? null;
+  }
+
   /** Observação mais recente ≤ data de referência, por município, com o quinteto de procedência. */
   private async observacoes(
     indicadorId: number,
@@ -188,12 +199,17 @@ export class IndicadoresService {
       valor = (somaNum / somaDen) * 100;
       linhas = [...numOk, ...denOk];
     } else {
-      // MEDIA_PONDERADA — peso: população estimada (indicador 2 do catálogo demo).
-      // Em produção o indicador-peso é declarado no catálogo, nunca fixo em código.
-      const PESO_POPULACAO_ID = 2;
+      // MEDIA_PONDERADA — peso é a população estimada, resolvida pelo NOME
+      // do indicador no catálogo (não por id fixo): robusto a remapeamento
+      // de ids entre seed demo e carga real.
+      const pesoId = await this.idIndicadorPorNome('População estimada');
+      if (!pesoId)
+        throw new UnprocessableEntityException(
+          `Média ponderada de "${meta.nome}" exige o indicador-peso "População estimada" no catálogo.`,
+        );
       const [vals, pesos] = await Promise.all([
         this.observacoes(indicadorId, codigos, dataReferencia),
-        this.observacoes(PESO_POPULACAO_ID, codigos, dataReferencia),
+        this.observacoes(pesoId, codigos, dataReferencia),
       ]);
       if (!vals.length) return this.ausencia(meta, rotulo, recorte, indicadorId, dataReferencia);
       const pesoPor = new Map(pesos.map((p) => [p.codigo_ibge, Number(p.valor)]));
@@ -317,5 +333,62 @@ export class IndicadoresService {
         ORDER BY m."Municipio_Nome", t."TemaConsulta_Ordem"`,
     );
     return r.rows;
+  }
+
+  /**
+   * Indicadores em destaque para a ficha municipal (RF-PORTAL-011): os
+   * publicados que efetivamente têm observação, do catálogo — não uma lista
+   * fixa de ids. Ordena por tema/ordem para uma síntese coerente.
+   */
+  async destaque(limite = 4) {
+    const r = await this.db.query<{ id: number }>(
+      `SELECT DISTINCT i."Indicador_Id" AS id, t."TemaConsulta_Ordem" AS ordem, i."Indicador_Id" AS tie
+         FROM "Indicador" i
+         JOIN "SubtemaConsulta" s ON s."SubtemaConsulta_Id" = i."Indicador_SubtemaId"
+         JOIN "TemaConsulta" t ON t."TemaConsulta_Id" = s."SubtemaConsulta_TemaId"
+        WHERE i."Indicador_StatusValidacao" = 'APROVADO'
+          AND EXISTS (SELECT 1 FROM "Observacao" o WHERE o."Observacao_IndicadorId" = i."Indicador_Id")
+        ORDER BY ordem, tie
+        LIMIT $1`,
+      [Math.min(Math.max(limite, 1), 12)],
+    );
+    return r.rows.map((x) => x.id);
+  }
+
+  /**
+   * A2 — Série histórica: valor por ano de referência para um recorte.
+   * Reusa o motor determinístico (consultar) ano a ano, então cada ponto
+   * carrega a mesma procedência e as mesmas regras de agregação (RN-003).
+   * Anos sem dado são omitidos (RN-005: ausência não é zero).
+   */
+  async serie(params: {
+    indicadorId: number;
+    recorte: Recorte;
+    codigo: string | null;
+  }): Promise<{ indicador: string; unidade: string; local: string; pontos: { ano: number; valor: number }[] }> {
+    const meta = await this.meta(params.indicadorId);
+    // Anos com observação para o indicador, do mais antigo ao mais novo.
+    const anos = await this.db.query<{ ano: number }>(
+      `SELECT DISTINCT extract(year FROM "Observacao_DataReferencia")::int AS ano
+         FROM "Observacao" WHERE "Observacao_IndicadorId" = $1 ORDER BY ano`,
+      [params.indicadorId],
+    );
+    const pontos: { ano: number; valor: number }[] = [];
+    let local = '';
+    for (const { ano } of anos.rows) {
+      try {
+        const r = await this.consultarNucleo({
+          indicadorId: params.indicadorId,
+          recorte: params.recorte,
+          codigo: params.codigo,
+          dataReferencia: `${ano}-12-31`,
+        });
+        pontos.push({ ano, valor: r.valor });
+        local = r.local;
+      } catch {
+        // ano sem dado para este recorte: omitido (ausência é resposta)
+      }
+    }
+    return { indicador: meta.nome, unidade: meta.unidade, local, pontos };
   }
 }

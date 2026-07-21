@@ -59,6 +59,28 @@ export class IndicadoresController {
     return this.svc.comparar(id, codigoIbge, ref, livres);
   }
 
+  /** GET /v1/indicadores/:id/serie?recorte=MUNICIPIO&codigo=5103403 (A2 série histórica) */
+  @Get('indicadores/:id/serie')
+  serie(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('recorte') recorte: string,
+    @Query('codigo') codigo?: string,
+  ) {
+    const rec = (recorte ?? 'MUNICIPIO').toUpperCase() as Recorte;
+    if (!RECORTES.includes(rec))
+      throw new BadRequestException(`recorte deve ser um de: ${RECORTES.join(', ')}`);
+    if (rec !== 'ESTADO' && !codigo)
+      throw new BadRequestException(`recorte ${rec} exige o parâmetro codigo`);
+    return this.svc.serie({ indicadorId: id, recorte: rec, codigo: codigo ?? null });
+  }
+
+  /** GET /v1/indicadores/destaque?limite=4 — indicadores com dado para a ficha (RF-PORTAL-011) */
+  @Get('indicadores/destaque')
+  destaque(@Query('limite') limite?: string) {
+    const n = Number(limite);
+    return this.svc.destaque(Number.isFinite(n) && n > 0 ? n : 4);
+  }
+
   /** GET /v1/cobertura — matriz simplificada município × tema (RF-ADMIN-002) */
   @Get('cobertura')
   cobertura() {

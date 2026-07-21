@@ -379,7 +379,9 @@ node scripts/ingestar-csv.mjs ingest-configs/pam-area-plantada.json ~/Downloads/
 # (ajuste "colunas" no config se o cabeçalho oficial diferir — o drift
 #  de esquema avisa exatamente o que foi lido)
 
-# Monitoramento (agendar no cron):
+# Manutenção/atualização (no serviço `rotinas` do compose de produção, 1×/dia):
+npm run manter:particoes         # cria partições Observacao futuras (≥2029) antes de precisar
+npm run refrescar:fontes         # atualização proativa: agentes API buscam o que venceu
 npm run alerta:fontes            # RF-INGEST-011: fonte parada
 npm run verificar-cadeia         # RF-ADMIN-008: integridade da auditoria
 ```

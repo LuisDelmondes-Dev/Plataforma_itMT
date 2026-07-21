@@ -34,6 +34,12 @@ interface Comparacao {
   estado: Partial<Resultado> & { erro?: string };
   municipiosLivres: (Partial<Resultado> & { erro?: string })[];
 }
+interface SerieHistorica {
+  indicador: string;
+  unidade: string;
+  local: string;
+  pontos: { ano: number; valor: number }[];
+}
 
 const fmt = new Intl.NumberFormat('pt-BR');
 
@@ -64,6 +70,7 @@ function Consulta() {
   const [indicadores, setIndicadores] = useState<Indicador[]>([]);
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [comparacao, setComparacao] = useState<Comparacao | null>(null);
+  const [serie, setSerie] = useState<SerieHistorica | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [livres, setLivres] = useState<string[]>([]); // até 4 municípios (§15.7)
@@ -132,6 +139,7 @@ function Consulta() {
     setSubtema(sub);
     setResultado(null);
     setComparacao(null);
+    setSerie(null);
     setErro(null);
     if (!local) return;
     atualizarUrl(local, tema, sub);
@@ -144,21 +152,45 @@ function Consulta() {
           `O subtema "${sub.nome}" ainda não tem indicador aprovado publicado. ` +
             `A ausência de dado é uma resposta legítima — nada foi estimado.`,
         );
+        setCarregando(false);
         return;
       }
-      const ind = inds[0];
-      setIndicadorAtual(ind);
+      // Multi-indicador (A2): o primeiro é o padrão; o seletor troca sem
+      // refazer a busca de subtema.
+      await carregarIndicador(inds[0], comparar);
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : 'A consulta falhou.');
+      setCarregando(false);
+    }
+  }
+
+  // Carrega um indicador específico: valor + comparação territorial + série
+  // histórica (A2). A série reusa o motor ano a ano, cada ponto sob as
+  // mesmas regras de agregação (RN-003).
+  async function carregarIndicador(ind: Indicador, comparar: string[] = livres) {
+    if (!local) return;
+    setIndicadorAtual(ind);
+    setResultado(null);
+    setComparacao(null);
+    setSerie(null);
+    setErro(null);
+    setCarregando(true);
+    try {
       const extra = comparar.length ? `&municipios=${comparar.join(',')}` : '';
-      const [res, comp] = await Promise.all([
+      const [res, comp, ser] = await Promise.all([
         apiGet<Resultado>(
           `/indicadores/${ind.id}/consulta?recorte=MUNICIPIO&codigo=${local.codigo_ibge}`,
         ),
         apiGet<Comparacao>(
           `/indicadores/${ind.id}/comparacao?codigo_ibge=${local.codigo_ibge}${extra}`,
         ),
+        apiGet<SerieHistorica>(
+          `/indicadores/${ind.id}/serie?recorte=MUNICIPIO&codigo=${local.codigo_ibge}`,
+        ).catch(() => null),
       ]);
       setResultado(res);
       setComparacao(comp);
+      setSerie(ser && ser.pontos.length > 1 ? ser : null);
     } catch (e: unknown) {
       setErro(e instanceof Error ? e.message : 'A consulta falhou.');
     } finally {
@@ -176,7 +208,8 @@ function Consulta() {
         return atual;
       } else novo = [...atual, codigo];
       setErro(null);
-      if (subtema) consultar(subtema, novo);
+      if (indicadorAtual) carregarIndicador(indicadorAtual, novo);
+      else if (subtema) consultar(subtema, novo);
       return novo;
     });
   }
@@ -312,7 +345,58 @@ function Consulta() {
 
         {resultado && !carregando && (
           <>
+            {indicadores.length > 1 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                <span className="overline" style={{ alignSelf: 'center' }}>Indicador:</span>
+                {indicadores.map((ind) => (
+                  <button
+                    key={ind.id}
+                    className="chip"
+                    aria-pressed={indicadorAtual?.id === ind.id}
+                    style={
+                      indicadorAtual?.id === ind.id
+                        ? { background: 'var(--accent-50)', borderColor: 'var(--accent-600)', cursor: 'pointer' }
+                        : { cursor: 'pointer' }
+                    }
+                    onClick={() => carregarIndicador(ind)}
+                  >
+                    {ind.nome}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <CartaoIndicador resultado={resultado} animada />
+
+            {serie && (
+              <div className="card" style={{ marginTop: 16 }}>
+                <div className="overline">Série histórica — {serie.local}</div>
+                <Sparkline pontos={serie.pontos} unidade={serie.unidade} />
+                <table className="dados" style={{ marginTop: 12 }}>
+                  <caption className="overline" style={{ display: 'none' }}>Série histórica anual</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Ano</th>
+                      <th scope="col" style={{ textAlign: 'right' }}>Valor</th>
+                      <th scope="col">Unidade</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {serie.pontos.map((p) => (
+                      <tr key={p.ano}>
+                        <td className="mono">{p.ano}</td>
+                        <td className="num">{fmt.format(p.valor)}</td>
+                        <td>{serie.unidade}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                  Cada ano vem do mesmo motor determinístico e da mesma fonte do valor acima;
+                  anos sem dado são omitidos — a ausência não é zero (RN-005).
+                </p>
+              </div>
+            )}
 
             {comparacao && (
               <div className="card" style={{ marginTop: 16 }}>
@@ -406,14 +490,37 @@ function Consulta() {
               </div>
             )}
 
-            {indicadores.length > 1 && (
-              <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>
-                Este subtema tem {indicadores.length} indicadores; exibindo o primeiro.
-              </p>
-            )}
           </>
         )}
       </section>
     </div>
+  );
+}
+
+/** Sparkline SVG mínimo, sem dependência — tendência anual do indicador. */
+function Sparkline({ pontos, unidade }: { pontos: { ano: number; valor: number }[]; unidade: string }) {
+  if (pontos.length < 2) return null;
+  const W = 320, H = 56, P = 4;
+  const vals = pontos.map((p) => p.valor);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min || 1;
+  const x = (i: number) => P + (i * (W - 2 * P)) / (pontos.length - 1);
+  const y = (v: number) => H - P - ((v - min) / span) * (H - 2 * P);
+  const d = pontos.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.valor).toFixed(1)}`).join(' ');
+  const ultimo = pontos[pontos.length - 1];
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      height={H}
+      role="img"
+      aria-label={`Tendência de ${pontos[0].ano} a ${ultimo.ano}, de ${min} a ${max} ${unidade}`}
+      style={{ display: 'block', marginTop: 8 }}
+    >
+      <path d={d} fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {pontos.map((p, i) => (
+        <circle key={p.ano} cx={x(i)} cy={y(p.valor)} r={i === pontos.length - 1 ? 3 : 2} fill="var(--primary)" />
+      ))}
+    </svg>
   );
 }

@@ -14,6 +14,8 @@
     "ingest:pib": "node scripts/ingestar-ibge-agregado.mjs pib",
     "ingest:csv": "node scripts/ingestar-csv.mjs",
     "alerta:fontes": "node scripts/alerta-fontes.mjs",
+    "refrescar:fontes": "node scripts/refrescar-fontes.mjs",
+    "manter:particoes": "node scripts/manter-particoes.mjs",
     "golden:gerar": "node scripts/gerar-golden-set.mjs",
     "golden:avaliar": "node scripts/avaliar-golden-set.mjs"
   },

@@ -38,8 +38,13 @@ services:
     build: ./api
     environment:
       DATABASE_URL: postgres://itmt:${POSTGRES_SENHA:?defina POSTGRES_SENHA}@db:5432/itmt
+      API_URL: http://api:3001
     entrypoint: >
       sh -c 'while true; do
+        echo "[rotinas] $(date -Iseconds) manter-particoes";
+        node scripts/manter-particoes.mjs || echo "[rotinas] ALERTA: partições falhou";
+        echo "[rotinas] $(date -Iseconds) refrescar-fontes";
+        node scripts/refrescar-fontes.mjs || echo "[rotinas] ALERTA: refresh de fontes falhou";
         echo "[rotinas] $(date -Iseconds) alerta:fontes";
         node scripts/alerta-fontes.mjs || echo "[rotinas] ALERTA: fontes falhou";
         echo "[rotinas] $(date -Iseconds) verificar-cadeia";

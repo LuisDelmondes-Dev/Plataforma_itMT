@@ -10,10 +10,6 @@ interface Ficha {
   regiao_intermediaria: string;
 }
 
-// Indicadores-chave da ficha-síntese (RF-PORTAL-011). No F1 completo esta
-// lista vem do catálogo, não de constante — mantida aqui pela simplicidade do MVP.
-const INDICADORES_CHAVE = [2, 1, 3, 4];
-
 const fmt = new Intl.NumberFormat('pt-BR');
 
 /** Ficha-síntese municipal, renderizada no servidor (RF-PORTAL-013: SSR para SEO). */
@@ -30,8 +26,11 @@ export default async function FichaMunicipal({ params }: { params: { codigo: str
     );
   }
 
+  // RF-PORTAL-011: os indicadores da ficha vêm do catálogo (os publicados
+  // que têm dado), não de uma lista fixa de ids.
+  const chave = await apiGet<number[]>('/indicadores/destaque?limite=4').catch(() => [] as number[]);
   const resultados = await Promise.all(
-    INDICADORES_CHAVE.map((id) =>
+    chave.map((id) =>
       apiGet<Resultado>(
         `/indicadores/${id}/consulta?recorte=MUNICIPIO&codigo=${params.codigo}`,
       ).catch(() => null),
@@ -66,11 +65,17 @@ export default async function FichaMunicipal({ params }: { params: { codigo: str
           marginTop: 24,
         }}
       >
+        {chave.length === 0 && (
+          <div className="aviso">
+            Ainda não há indicador publicado com dado para a ficha-síntese. A ausência de
+            dado é uma resposta legítima — nada foi estimado.
+          </div>
+        )}
         {resultados.map((r, i) =>
           r ? (
-            <CartaoIndicador key={INDICADORES_CHAVE[i]} resultado={r} />
+            <CartaoIndicador key={chave[i]} resultado={r} />
           ) : (
-            <div key={INDICADORES_CHAVE[i]} className="aviso">
+            <div key={chave[i]} className="aviso">
               Sem dado publicado para este indicador. A ausência de dado é uma resposta
               legítima — nada foi estimado.
             </div>

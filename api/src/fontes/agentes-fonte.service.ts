@@ -138,11 +138,18 @@ const AGENTES: DefAgente[] = [
     instrucao: 'Baixe o CSV no portal da SESP-MT e rode: node scripts/ingestar-csv.mjs ingest-configs/sesp-ocorrencias.json <arquivo.csv>',
   },
   {
-    slug: 'pam', nome: 'Área plantada (PAM)',
-    fonte: 'IBGE — Produção Agrícola Municipal', tipo: 'ARQUIVO', validadeDias: 366,
-    descricao: 'Área plantada por município — tema Agronegócio.',
-    verificar(db) { return situacaoIndicador(db, 'Área plantada', '%Agrícola Municipal%', this.validadeDias); },
-    instrucao: 'Baixe o CSV da PAM no SIDRA e rode: node scripts/ingestar-csv.mjs ingest-configs/pam-area-plantada.json <arquivo.csv>',
+    slug: 'pam', nome: 'Área plantada (PAM)', indicador: 'Área plantada',
+    fonte: 'IBGE — PAM via SIDRA (agregado 1612)', tipo: 'API', validadeDias: 366,
+    descricao: 'Área plantada por município — tema Agronegócio (SIDRA 1612/214, sem download manual).',
+    verificar(db) { return situacaoIndicador(db, 'Área plantada', '%agregado 1612%', this.validadeDias); },
+    comandos: () => {
+      const custom = (ano) => [
+        'scripts/ingestar-ibge-agregado.mjs', 'custom', String(ano),
+        '--agregado', '1612', '--variavel', '214',
+        '--indicador', 'Área plantada', '--unidade', 'hectares', '--tipo', 'SOMA',
+      ];
+      return [custom(ANO - 1), custom(ANO - 2)];
+    },
   },
 ];
 
