@@ -7,7 +7,7 @@ interface Celula {
   tema_id: number;
   tema: string;
   ultima_referencia: string | null;
-  observacoes: string;
+  observacoes: number;
 }
 
 export const dynamic = 'force-dynamic';

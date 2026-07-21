@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <a href="#conteudo" style={{ position: 'absolute', left: -9999, top: 0 }} className="btn">
+        <a href="#conteudo" className="btn skip-link">
           Ir para o conteúdo
         </a>
         <Shell>{children}</Shell>

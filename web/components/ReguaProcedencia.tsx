@@ -34,6 +34,12 @@ export function ReguaProcedencia({
         {p.data_referencia.slice(0, 4)}
         {' · extraído em '}
         {dataBr(p.data_extracao)}
+        {' · lic. '}
+        {p.licenca}
+        {' · '}
+        <span className="mono" title={p.hash}>
+          {p.hash.slice(0, 12)}…
+        </span>
         {procedencia.length > 1 ? ` · +${procedencia.length - 1} fonte(s)` : ''}
       </div>
     </div>

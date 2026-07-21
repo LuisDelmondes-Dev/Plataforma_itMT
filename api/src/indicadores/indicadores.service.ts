@@ -306,7 +306,7 @@ export class IndicadoresService {
       `SELECT m."Municipio_CodigoIbge" AS codigo_ibge, m."Municipio_Nome" AS municipio,
               t."TemaConsulta_Id" AS tema_id, t."TemaConsulta_Nome" AS tema,
               max(o."Observacao_DataReferencia")::text AS ultima_referencia,
-              count(o.*) AS observacoes
+              count(o.*)::int AS observacoes
          FROM "Municipio" m
         CROSS JOIN "TemaConsulta" t
          LEFT JOIN "SubtemaConsulta" s ON s."SubtemaConsulta_TemaId" = t."TemaConsulta_Id"

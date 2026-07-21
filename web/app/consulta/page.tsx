@@ -97,6 +97,20 @@ function Consulta() {
     }
   }, [pSub, subtemas]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Busca da home (?q=) — resolve o texto para um município pela busca
+  // tolerante a acento do servidor (RF-PORTAL-001). O permalink (?municipio)
+  // tem precedência; por isso só roda quando não há município no link.
+  const pQ = params.get('q');
+  useEffect(() => {
+    if (!pQ || pMun || local) return;
+    setBusca(pQ);
+    apiGet<Municipio[]>(`/municipios?q=${encodeURIComponent(pQ)}`)
+      .then((achados) => {
+        if (achados.length) setLocal(achados[0]);
+      })
+      .catch(() => {});
+  }, [pQ, pMun]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Permalink estável e compartilhável para a combinação atual
   function atualizarUrl(l: Municipio | null, t: Tema | null, st: Subtema | null) {
     const q = new URLSearchParams();
