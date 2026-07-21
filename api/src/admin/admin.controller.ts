@@ -15,6 +15,7 @@ import {
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { ValidacaoTecnicaService } from './validacao-tecnica.service';
 
 /**
  * Autenticação do módulo ADMIN por token Bearer (RNF-05, recorte MVP).
@@ -66,7 +67,20 @@ export class AdminController {
   constructor(
     private readonly db: DatabaseService,
     private readonly auditoria: AuditoriaService,
+    private readonly validacao: ValidacaoTecnicaService,
   ) {}
+
+  /** Agente de Validação Técnica: checagens automáticas (não decide — RG-09). */
+  @Get('indicadores/:id/validacao')
+  validar(@Param('id', ParseIntPipe) id: number) {
+    return this.validacao.validar(id);
+  }
+
+  /** Dossiê para o revisor: procedência, amostra, cobertura, drift + validação técnica. */
+  @Get('indicadores/:id/dossie')
+  dossie(@Param('id', ParseIntPipe) id: number) {
+    return this.validacao.dossie(id);
+  }
 
   // ---------- RF-ADMIN-003/004: validação técnica de indicador ----------
 
