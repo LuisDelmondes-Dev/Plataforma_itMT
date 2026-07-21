@@ -14,7 +14,10 @@ export const PROMPT_VERSAO = 'xingu-interprete-v1.0';
 export interface ProvedorLlm {
   nome(): string;
   disponivel(): boolean;
-  completar(sistema: string, usuario: string): Promise<string>;
+  // `ref` (opcional) recebe o nome do provedor que efetivamente respondeu —
+  // usado pela cascata para atribuir corretamente na trilha, sem depender de
+  // estado mutável compartilhado entre requisições concorrentes.
+  completar(sistema: string, usuario: string, ref?: { provedor?: string }): Promise<string>;
 }
 
 export class ProvedorAnthropic implements ProvedorLlm {
@@ -89,13 +92,14 @@ export class ProvedorEmCascata implements ProvedorLlm {
   }
   nome() { return this.ultimoQueRespondeu; }
   disponivel() { return this.membros.some((m) => m.disponivel()); }
-  async completar(sistema: string, usuario: string): Promise<string> {
+  async completar(sistema: string, usuario: string, ref?: { provedor?: string }): Promise<string> {
     let ultimoErro: Error = new Error('sem provedor');
     for (const m of this.membros) {
       if (!m.disponivel()) continue;
       try {
         const resposta = await m.completar(sistema, usuario);
         this.ultimoQueRespondeu = m.nome();
+        if (ref) ref.provedor = m.nome(); // atribuição por-requisição (sem corrida)
         return resposta;
       } catch (e) {
         ultimoErro = e as Error;
@@ -148,8 +152,9 @@ export class InterpreteService {
   ): Promise<SaidaInterprete & { interprete: string }> {
     if (this.provedor.disponivel()) {
       try {
-        const saida = await this.viaLlm(pergunta, contexto);
-        if (saida) return { ...saida, interprete: this.provedor.nome() };
+        const ref: { provedor?: string } = {}; // atribuição por-requisição
+        const saida = await this.viaLlm(pergunta, contexto, ref);
+        if (saida) return { ...saida, interprete: ref.provedor ?? this.provedor.nome() };
       } catch (e) {
         this.log.warn(`LLM indisponível/inválido (${(e as Error).message}); degradando para léxico (RG-05).`);
       }
@@ -161,6 +166,7 @@ export class InterpreteService {
   private async viaLlm(
     pergunta: string,
     contexto?: { indicador_id?: number; codigo_ibge?: string },
+    ref?: { provedor?: string },
   ): Promise<SaidaInterprete | null> {
     const cat = await this.catalogo.obter();
     const sistema = [
@@ -183,7 +189,7 @@ export class InterpreteService {
       'CONSÓRCIOS: ' + cat.consorcios.map((c) => `${c.codigo}=${c.nome}`).join(', '),
     ].join('\n');
 
-    const bruto = await this.provedor.completar(sistema, envelopar(pergunta));
+    const bruto = await this.provedor.completar(sistema, envelopar(pergunta), ref);
     const json = bruto.replace(/```json|```/g, '').trim();
     let obj: unknown;
     try { obj = JSON.parse(json); } catch { return null; }

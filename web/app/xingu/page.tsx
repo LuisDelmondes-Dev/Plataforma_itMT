@@ -6,8 +6,15 @@ interface Citacao {
   fonte: string;
   url: string | null;
   data_referencia: string;
+  data_extracao?: string;
   licenca: string;
   hash: string;
+}
+interface Situacao {
+  modo: string;
+  llm: string;
+  chaves_carregadas: { anthropic: boolean; openai: boolean };
+  provedores: { provedor: string; llm: string; detalhe: string }[];
 }
 interface Followup { rotulo: string; tipo: 'PERGUNTA' | 'LINK'; alvo: string }
 interface Opcao { rotulo: string; pergunta_sugerida: string }
@@ -38,8 +45,18 @@ export default function Xingu() {
   const [ouvindo, setOuvindo] = useState(false);
   const contexto = useRef<Resposta['contexto']>(undefined);
   const fim = useRef<HTMLDivElement>(null);
+  const [situacao, setSituacao] = useState<Situacao | null>(null);
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: 'smooth' }); }, [mensagens]);
+
+  // RG-05: mostra ao usuário se a IA de linguagem livre está ativa ou se o
+  // portal está no modo léxico determinístico (ex.: provedores sem crédito).
+  useEffect(() => {
+    fetch('/api/v1/xingu/situacao')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => setSituacao(s))
+      .catch(() => {});
+  }, []);
 
   async function perguntar(pergunta: string) {
     if (!pergunta.trim() || ocupada) return;
@@ -108,6 +125,16 @@ export default function Xingu() {
         valor é auditado contra o resultado da consulta antes de aparecer aqui.
       </p>
 
+      {situacao && situacao.llm !== 'ATIVO' && (
+        <div className="aviso" role="status" style={{ marginTop: 8 }}>
+          <strong>Modo léxico determinístico (RG-05).</strong> A IA de linguagem livre está
+          indisponível no momento — as respostas vêm do vocabulário do domínio (município,
+          tema, indicador). O portal funciona normalmente; nenhum número deixa de ser auditado.
+          {situacao.provedores?.some((p) => /crédito|credit|quota/i.test(p.detalhe)) &&
+            ' (Provedores sem crédito — adicione crédito em uma conta para ativar a linguagem livre.)'}
+        </div>
+      )}
+
       <div role="log" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '24px 0' }}>
         {mensagens.length === 0 && (
           <div className="card">
@@ -152,22 +179,24 @@ export default function Xingu() {
               <div className="card" style={{ padding: '12px 16px' }}>
                 <p style={{ margin: 0 }}>{m.texto}</p>
 
-                {m.dados?.citacoes?.length ? (
-                  <div className="regua" style={{ marginTop: 10 }}>
-                    <div className="trilho" aria-hidden="true" />
-                    <div className="legenda">
-                      {m.dados.citacoes[0].url ? (
-                        <a href={m.dados.citacoes[0].url} target="_blank" rel="noreferrer">
-                          {m.dados.citacoes[0].fonte}
-                        </a>
-                      ) : (
-                        m.dados.citacoes[0].fonte
-                      )}
-                      {' · ref. '}{m.dados.citacoes[0].data_referencia.slice(0, 4)}
-                      {' · '}{m.dados.citacoes[0].licenca}
-                    </div>
-                  </div>
-                ) : null}
+                {m.dados?.citacoes?.length
+                  ? m.dados.citacoes.map((c, ci) => (
+                      <div key={ci} className="regua" style={{ marginTop: 10 }}>
+                        <div className="trilho" aria-hidden="true" />
+                        <div className="legenda">
+                          {c.url ? (
+                            <a href={c.url} target="_blank" rel="noreferrer">{c.fonte}</a>
+                          ) : (
+                            c.fonte
+                          )}
+                          {' · ref. '}{c.data_referencia.slice(0, 4)}
+                          {' · '}{c.licenca}
+                          {' · '}
+                          <span className="mono" title={c.hash}>{c.hash.slice(0, 12)}…</span>
+                        </div>
+                      </div>
+                    ))
+                  : null}
 
                 {m.dados?.clarificacao && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>

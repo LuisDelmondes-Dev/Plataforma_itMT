@@ -1,5 +1,6 @@
 import { ValorComProcedencia } from '../common/procedencia';
 import { ProvedorLlm } from './interprete.service';
+import { envelopar } from './sentinela';
 
 /**
  * A05 — Narrador (borda de saída, RG-02/RG-03).
@@ -56,7 +57,8 @@ export async function narrarComLlm(
     'Não invente dados. Não use markdown. Uma frase, no máximo duas.',
     `Contexto do resultado: indicador "${r.indicador}" (${r.unidade}), local "${r.local}", agregação ${r.agregacao}.`,
   ].join('\n');
-  const texto = await provedor.completar(sistema, pergunta);
+  // RG-04: mesmo após A14, a pergunta entra envelopada como DADO no prompt.
+  const texto = await provedor.completar(sistema, envelopar(pergunta));
   return preencherSlots(texto.trim(), slotsDe(r));
 }
 
@@ -69,10 +71,13 @@ export async function narrarComLlm(
 /** Constrói o conjunto de números autorizados a aparecer no texto. */
 export function numerosAutorizados(r: ValorComProcedencia): Set<number> {
   const s = new Set<number>();
-  s.add(Number(r.valor));
-  s.add(Number(r.valor.toFixed(0)));
-  s.add(Number(r.valor.toFixed(1)));
-  s.add(Number(r.valor.toFixed(2)));
+  const val = Number(r.valor);
+  // Valor e suas variantes de arredondamento, incluindo |valor|: a extração
+  // pt-BR descarta o sinal (bug do negativo), então autorizamos ambos.
+  for (const v of [val, Number(val.toFixed(0)), Number(val.toFixed(1)), Number(val.toFixed(2))]) {
+    s.add(v);
+    s.add(Math.abs(v));
+  }
   if (r.municipios_agregados) s.add(r.municipios_agregados);
   for (const p of r.procedencia) {
     const ano = Number(p.data_referencia.slice(0, 4));
@@ -81,6 +86,14 @@ export function numerosAutorizados(r: ValorComProcedencia): Set<number> {
     const mes = Number(p.data_referencia.slice(5, 7));
     if (dia) s.add(dia);
     if (mes) s.add(mes);
+  }
+  // Numerais que vêm de METADADO DETERMINÍSTICO (unidade, local, nome do
+  // indicador) são legítimos — o motor os insere no template, não o LLM.
+  // Sem isto, uma unidade como "casos/100 mil hab." vetaria o indicador
+  // para sempre. O veto real segue intacto: número inventado pelo LLM
+  // (ex.: 999999) continua fora do conjunto.
+  for (const meta of [r.unidade, r.local, r.indicador]) {
+    if (typeof meta === 'string') for (const n of extrairNumerais(meta)) s.add(n);
   }
   return s;
 }

@@ -14,13 +14,29 @@ export class XinguController {
     private readonly interprete: InterpreteService,
   ) {}
 
+  // Cache do autodiagnóstico: o ping consome tokens em cada provedor, então
+  // GETs repetidos (ex.: banner da UI) reusam o resultado por 60s.
+  private situacaoCache: { quando: number; valor: unknown } | null = null;
+  private static readonly SITUACAO_TTL_MS = 60_000;
+
   /**
    * Autodiagnóstico do provedor LLM: mostra se a chave está carregada e,
    * com um ping mínimo, POR QUE o LLM está (ou não) ativo — ex.: conta
    * sem créditos. O léxico (RG-05) segue funcionando em qualquer caso.
+   * Memoizado por 60s (o ping é billável).
    */
   @Get('situacao')
   async situacao() {
+    const agora = Date.now();
+    if (this.situacaoCache && agora - this.situacaoCache.quando < XinguController.SITUACAO_TTL_MS) {
+      return this.situacaoCache.valor;
+    }
+    const valor = await this.calcularSituacao();
+    this.situacaoCache = { quando: agora, valor };
+    return valor;
+  }
+
+  private async calcularSituacao() {
     const provedor = this.interprete.provedor;
     const membros: ProvedorLlm[] =
       provedor instanceof ProvedorEmCascata ? provedor.membros : [provedor];

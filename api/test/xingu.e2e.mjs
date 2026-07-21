@@ -22,7 +22,9 @@ const perguntar = async (pergunta, extra = {}) => {
 
 before(async () => {
   api = spawn('node', ['dist/main.js'], {
-    env: { ...process.env, PORT: String(PORT), AGENTES_AUTO: '0' },
+    // XINGU_PROVEDOR=lexico fixa o intérprete determinístico: a F2 é testada
+    // pura, independente de chaves LLM carregadas pelo cofre no ambiente.
+    env: { ...process.env, PORT: String(PORT), AGENTES_AUTO: '0', XINGU_PROVEDOR: 'lexico' },
     stdio: 'ignore',
   });
   for (let i = 0; i < 40; i++) {

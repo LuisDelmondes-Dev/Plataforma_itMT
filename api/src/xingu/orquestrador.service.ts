@@ -21,7 +21,7 @@ export interface RespostaXingu {
   plano?: PlanoConsulta & { local?: string; indicador?: string };
   clarificacao?: Clarificacao;
   valores?: { rotulo: string; valor: number; unidade: string }[];
-  citacoes?: { fonte: string; url: string | null; data_referencia: string; licenca: string; hash: string }[];
+  citacoes?: { fonte: string; url: string | null; data_referencia: string; data_extracao: string; licenca: string; hash: string }[];
   followups?: { rotulo: string; tipo: 'PERGUNTA' | 'LINK'; alvo: string }[];
   contexto?: { indicador_id?: number; codigo_ibge?: string };
   auditoria: { numerais: number; vetos: number; interprete: string };
