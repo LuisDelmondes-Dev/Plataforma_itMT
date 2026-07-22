@@ -7,13 +7,17 @@ import {
   Query,
 } from '@nestjs/common';
 import { IndicadoresService } from './indicadores.service';
+import { ProjecaoService } from './projecao.service';
 import { Recorte } from '../territorio/territorio.service';
 
 const RECORTES: Recorte[] = ['ESTADO', 'MUNICIPIO', 'RGINT', 'RGI', 'CONSORCIO'];
 
 @Controller()
 export class IndicadoresController {
-  constructor(private readonly svc: IndicadoresService) {}
+  constructor(
+    private readonly svc: IndicadoresService,
+    private readonly projecao: ProjecaoService,
+  ) {}
 
   /**
    * GET /v1/indicadores/:id/consulta?recorte=MUNICIPIO&codigo=5103403&referencia=2025-12-31
@@ -72,6 +76,32 @@ export class IndicadoresController {
     if (rec !== 'ESTADO' && !codigo)
       throw new BadRequestException(`recorte ${rec} exige o parâmetro codigo`);
     return this.svc.serie({ indicadorId: id, recorte: rec, codigo: codigo ?? null });
+  }
+
+  /**
+   * GET /v1/indicadores/:id/projecao?recorte=&codigo=&horizonte=2
+   * Projeção OLS determinística sobre a série (categoria PROJECAO — nunca
+   * "dado"); exige >= 4 pontos observados, senão 422 (RN-005).
+   */
+  @Get('indicadores/:id/projecao')
+  projetar(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('recorte') recorte: string,
+    @Query('codigo') codigo?: string,
+    @Query('horizonte') horizonte?: string,
+  ) {
+    const rec = (recorte ?? 'MUNICIPIO').toUpperCase() as Recorte;
+    if (!RECORTES.includes(rec))
+      throw new BadRequestException(`recorte deve ser um de: ${RECORTES.join(', ')}`);
+    if (rec !== 'ESTADO' && !codigo)
+      throw new BadRequestException(`recorte ${rec} exige o parâmetro codigo`);
+    const h = Number(horizonte);
+    return this.projecao.projetar({
+      indicadorId: id,
+      recorte: rec,
+      codigo: codigo ?? null,
+      horizonte: Number.isFinite(h) && h > 0 ? h : 2,
+    });
   }
 
   /** GET /v1/indicadores/:id/mapa?referencia=AAAA-MM-DD — valor por município p/ coroplético */

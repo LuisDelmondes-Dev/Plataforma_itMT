@@ -16,6 +16,7 @@ interface Destaque { id: number; nome: string; unidade: string; tema: string }
 interface LinhaMapa { codigo_ibge: string; valor: number; data_referencia: string; fonte: string }
 interface RespostaMapa { indicador: string; unidade: string; municipios: LinhaMapa[] }
 interface SerieHistorica { indicador: string; unidade: string; local: string; pontos: { ano: number; valor: number }[] }
+interface Projecao { metodo: string; r2: number; projetados: { ano: number; valor: number }[]; aviso: string }
 interface Municipio { codigo_ibge: string; nome: string }
 interface Cobertura { municipio: string; tema: string; estado: string }
 
@@ -26,6 +27,7 @@ export default function PaginaPainel() {
   const [kpis, setKpis] = useState<Resultado[]>([]);
   const [sel, setSel] = useState<number | null>(null);
   const [serie, setSerie] = useState<SerieHistorica | null>(null);
+  const [projecao, setProjecao] = useState<Projecao | null>(null);
   const [mapa, setMapa] = useState<RespostaMapa | null>(null);
   const [nomes, setNomes] = useState<Map<string, string>>(new Map());
   const [erro, setErro] = useState<string | null>(null);
@@ -52,6 +54,10 @@ export default function PaginaPainel() {
     if (!sel) return;
     apiGet<SerieHistorica>(`/indicadores/${sel}/serie?recorte=ESTADO`).then(setSerie).catch(() => setSerie(null));
     apiGet<RespostaMapa>(`/indicadores/${sel}/mapa`).then(setMapa).catch(() => setMapa(null));
+    // Projeção declarada (categoria PROJECAO): série curta → sem projeção, sem drama.
+    apiGet<Projecao>(`/indicadores/${sel}/projecao?recorte=ESTADO&horizonte=2`)
+      .then(setProjecao)
+      .catch(() => setProjecao(null));
   }, [sel]);
 
   const ranking = useMemo(() => {
@@ -107,11 +113,17 @@ export default function PaginaPainel() {
           <div className="card-header"><span className="title-md">Tendência — {indicadorSel?.nome}</span></div>
           {serie && serie.pontos.length >= 2 ? (
             <>
-              <Sparkline pontos={serie.pontos} unidade={serie.unidade} />
+              <Sparkline pontos={serie.pontos} unidade={serie.unidade} projecao={projecao?.projetados ?? []} />
               <div className="mono-sm" style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--on-surface-variant)' }}>
                 <span>{serie.pontos[0].ano}: {fmt.format(serie.pontos[0].valor)}</span>
                 <span>{serie.pontos.at(-1)!.ano}: {fmt.format(serie.pontos.at(-1)!.valor)} {serie.unidade}</span>
               </div>
+              {projecao && projecao.projetados.length > 0 && (
+                <p className="label-md" style={{ color: 'var(--on-surface-variant)', marginTop: 8 }}>
+                  Tracejado: PROJEÇÃO {projecao.projetados.map((p) => `${p.ano} ≈ ${fmt.format(p.valor)}`).join(' · ')} —{' '}
+                  {projecao.metodo} Não é dado observado.
+                </p>
+              )}
               <p className="label-md" style={{ color: 'var(--on-surface-variant)', marginTop: 8 }}>
                 Anos sem ponto não têm dado publicado — ausência é resposta, não zero.
               </p>
