@@ -344,19 +344,24 @@ export class IndicadoresService {
    * publicados que efetivamente têm observação, do catálogo — não uma lista
    * fixa de ids. Ordena por tema/ordem para uma síntese coerente.
    */
-  async destaque(limite = 4) {
-    const r = await this.db.query<{ id: number }>(
-      `SELECT DISTINCT i."Indicador_Id" AS id, t."TemaConsulta_Ordem" AS ordem, i."Indicador_Id" AS tie
+  async destaque(limite = 4, detalhe = false) {
+    const r = await this.db.query<{ id: number; nome: string; unidade: string; tema: string }>(
+      `SELECT DISTINCT i."Indicador_Id" AS id, i."Indicador_Nome" AS nome,
+              i."Indicador_Unidade" AS unidade, t."TemaConsulta_Nome" AS tema,
+              t."TemaConsulta_Ordem" AS ordem
          FROM "Indicador" i
          JOIN "SubtemaConsulta" s ON s."SubtemaConsulta_Id" = i."Indicador_SubtemaId"
          JOIN "TemaConsulta" t ON t."TemaConsulta_Id" = s."SubtemaConsulta_TemaId"
         WHERE i."Indicador_StatusValidacao" = 'APROVADO'
           AND EXISTS (SELECT 1 FROM "Observacao" o WHERE o."Observacao_IndicadorId" = i."Indicador_Id")
-        ORDER BY ordem, tie
+        ORDER BY ordem, id
         LIMIT $1`,
       [Math.min(Math.max(limite, 1), 12)],
     );
-    return r.rows.map((x) => x.id);
+    // Compat: sem detalhe devolve só os ids (contrato da ficha municipal).
+    return detalhe
+      ? r.rows.map(({ id, nome, unidade, tema }) => ({ id, nome, unidade, tema }))
+      : r.rows.map((x) => x.id);
   }
 
   /**
@@ -394,5 +399,35 @@ export class IndicadoresService {
       }
     }
     return { indicador: meta.nome, unidade: meta.unidade, local, pontos };
+  }
+
+  /**
+   * Valor por município para o mapa coroplético (Onda 2): a observação
+   * mais recente ≤ referência, município a município, com a procedência
+   * resumida. Municípios sem dado NÃO entram na lista (RN-005: ausência
+   * é resposta — o mapa os pinta como "sem dado", nunca como zero).
+   */
+  async mapa(params: { indicadorId: number; referencia?: string | null }) {
+    const meta = await this.meta(params.indicadorId); // impõe APROVADO (RG-09)
+    const ref = params.referencia ?? new Date().toISOString().slice(0, 10);
+    const codigos = await this.db.query<{ codigo: string }>(
+      `SELECT "Municipio_CodigoIbge" AS codigo FROM "Municipio"`,
+    );
+    const linhas = await this.observacoes(
+      params.indicadorId,
+      codigos.rows.map((c) => c.codigo),
+      ref,
+    );
+    return {
+      indicador: meta.nome,
+      unidade: meta.unidade,
+      referencia: ref,
+      municipios: linhas.map((l) => ({
+        codigo_ibge: l.codigo_ibge,
+        valor: Number(l.valor),
+        data_referencia: l.data_referencia,
+        fonte: l.fonte,
+      })),
+    };
   }
 }

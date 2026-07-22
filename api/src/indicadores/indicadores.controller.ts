@@ -74,11 +74,19 @@ export class IndicadoresController {
     return this.svc.serie({ indicadorId: id, recorte: rec, codigo: codigo ?? null });
   }
 
+  /** GET /v1/indicadores/:id/mapa?referencia=AAAA-MM-DD — valor por município p/ coroplético */
+  @Get('indicadores/:id/mapa')
+  mapa(@Param('id', ParseIntPipe) id: number, @Query('referencia') referencia?: string) {
+    if (referencia && !/^\d{4}-\d{2}-\d{2}$/.test(referencia))
+      throw new BadRequestException('referencia deve ser AAAA-MM-DD');
+    return this.svc.mapa({ indicadorId: id, referencia: referencia ?? null });
+  }
+
   /** GET /v1/indicadores/destaque?limite=4 — indicadores com dado para a ficha (RF-PORTAL-011) */
   @Get('indicadores/destaque')
-  destaque(@Query('limite') limite?: string) {
+  destaque(@Query('limite') limite?: string, @Query('detalhe') detalhe?: string) {
     const n = Number(limite);
-    return this.svc.destaque(Number.isFinite(n) && n > 0 ? n : 4);
+    return this.svc.destaque(Number.isFinite(n) && n > 0 ? n : 4, detalhe === '1');
   }
 
   /** GET /v1/cobertura — matriz simplificada município × tema (RF-ADMIN-002) */

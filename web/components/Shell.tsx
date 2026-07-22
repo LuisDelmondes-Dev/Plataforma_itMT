@@ -11,6 +11,7 @@ const I = {
   xingu: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12a8 8 0 1 0-3.1 6.3L21 20l-1.2-3.6A7.9 7.9 0 0 0 20 12Z" /><path d="M8.5 11h7M8.5 14.5h4" /></svg>,
   ficha: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3h7l4 4v14H7z" /><path d="M14 3v4h4M10 12h5M10 16h5" /></svg>,
   geoportal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m9 4-5 2v14l5-2 6 2 5-2V4l-5 2-6-2Z" /><path d="M9 4v14M15 6v14" /></svg>,
+  mapa: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.1-6-10a6 6 0 1 1 12 0c0 4.9-6 10-6 10Z" /><circle cx="12" cy="11" r="2.2" /></svg>,
   acervo: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="m3.5 15 5-5 5 5 3-3 4 4" /><circle cx="9" cy="9.5" r="1.2" /></svg>,
   campo: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6.5-5.4-6.5-10a6.5 6.5 0 0 1 13 0c0 4.6-6.5 10-6.5 10Z" /><circle cx="12" cy="11" r="2.3" /></svg>,
   cobertura: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="4" y="4" width="7" height="7" rx="1.2" /><rect x="13" y="4" width="7" height="7" rx="1.2" /><rect x="4" y="13" width="7" height="7" rx="1.2" /><rect x="13" y="13" width="7" height="7" rx="1.2" /></svg>,
@@ -25,6 +26,7 @@ const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof 
     itens: [
       { href: '/', rotulo: 'Início', icone: 'inicio' },
       { href: '/consulta', rotulo: 'Indicadores', icone: 'indicadores' },
+      { href: '/mapa', rotulo: 'Mapa', icone: 'mapa' },
       { href: '/xingu', rotulo: 'IA Xingú', icone: 'xingu' },
       { href: '/municipio/5103403', rotulo: 'Fichas municipais', icone: 'ficha' },
       { href: '/fontes', rotulo: 'Agentes de fonte', icone: 'fontes' },
