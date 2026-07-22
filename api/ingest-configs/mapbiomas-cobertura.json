@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "MapBiomas — Cobertura vegetal nativa por município",
+    "origem": "Projeto MapBiomas (rede colaborativa)",
+    "url": "https://brasil.mapbiomas.org/estatisticas/",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "CC-BY 4.0 (citação obrigatória ao MapBiomas)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": { "nome": "Cobertura vegetal nativa", "unidade": "hectares", "tipoAgregacao": "SOMA", "subtemaNome": "Cobertura vegetal nativa" },
+  "colunas": { "codigoIbge": "geocode", "valor": "area_ha" },
+  "dataReferencia": "2024-12-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

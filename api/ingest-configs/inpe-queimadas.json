@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "INPE — Programa Queimadas (focos de calor)",
+    "origem": "Instituto Nacional de Pesquisas Espaciais",
+    "url": "https://terrabrasilis.dpi.inpe.br/queimadas/portal/dados-abertos/",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Dados abertos INPE (CC-BY-SA)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": { "nome": "Focos de queimadas", "unidade": "focos", "tipoAgregacao": "SOMA", "subtemaNome": "Focos de queimadas" },
+  "colunas": { "codigoIbge": "id_municipio", "valor": "focos" },
+  "dataReferencia": "2025-12-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}
