@@ -142,6 +142,11 @@ export async function quarentenar(db, cargaId, registro, motivo) {
  * Divergência ⇒ carga marcada BLOQUEADA_DRIFT + alerta na auditoria +
  * promoção abortada. Para aceitar o novo esquema conscientemente:
  * rode o conector com --aceitar-esquema.
+ *
+ * Chaves que são PERÍODO (ex.: "serie.2023" nos agregados SIDRA) são
+ * normalizadas para "serie.<ano>": drift é mudança de ESTRUTURA da
+ * fonte, não a virada natural do ano de referência — senão o guard
+ * dispararia falso positivo a cada exercício.
  */
 export function fingerprintDe(amostra) {
   const chaves = (obj, prefixo = '') =>
@@ -152,7 +157,9 @@ export function fingerprintDe(amostra) {
           ? [prefixo + k, ...chaves(obj[k], `${prefixo}${k}.`)]
           : [prefixo + k],
       );
-  return chaves(amostra).join('|');
+  return chaves(amostra)
+    .map((c) => c.replace(/^(serie)\.\d{4}$/, '$1.<ano>'))
+    .join('|');
 }
 
 export async function verificarEsquema(db, { fonteId, cargaId, amostra, aceitarNovo }) {

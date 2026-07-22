@@ -12,7 +12,7 @@
 // licença e hash do bruto (§12.1).
 // ============================================================
 import {
-  pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar,
+  pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar, quarentenar,
 } from './lib-ingest.mjs';
 
 const ano = /^\d{4}$/.test(process.argv[2] ?? '') ? process.argv[2] : '2024';
@@ -53,23 +53,30 @@ try {
   if (!Array.isArray(series) || !series.length) {
     throw new Error('Validação Prata falhou: estrutura inesperada do agregado 6579.');
   }
+  // Valor suprimido pelo IBGE ("..." / "-") não derruba a carga: vai para a
+  // Quarentena (RF-INGEST-010) com o registro bruto e o motivo — ausência é
+  // resposta (RN-005), nunca zero nem estimativa.
   const linhas = [];
+  const invalidas = [];
   for (const s of series) {
     const codigo = String(s?.localidade?.id ?? '');
     const valorTxt = s?.serie?.[ano];
     if (!/^\d{7}$/.test(codigo)) continue; // só nível N6 (município)
     const valor = Number(valorTxt);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      throw new Error(`Validação Prata falhou: valor inválido para ${codigo}: "${valorTxt}"`);
+    if (!Number.isFinite(valor) || valor <= 0 || valorTxt === '...' || valorTxt === '-') {
+      invalidas.push({ registro: s, motivo: `Valor inválido/indisponível para ${codigo} em ${ano}: "${valorTxt}"` });
+      continue;
     }
     linhas.push({ codigo, valor });
   }
-  if (!linhas.length) throw new Error('Validação Prata falhou: nenhuma série municipal encontrada.');
-  console.log(`✓ Prata: ${linhas.length} municípios com população de ${ano}.`);
+  if (!linhas.length) throw new Error('Validação Prata falhou: nenhuma série municipal válida — tudo em quarentena.');
+  console.log(`✓ Prata: ${linhas.length} municípios com população de ${ano}` +
+    (invalidas.length ? `; ${invalidas.length} em quarentena.` : '.'));
 
   const cargaId = await registrarCarga(db, {
-    fonteId, hash, caminhoBronze: caminho, linhasLidas: linhas.length,
+    fonteId, hash, caminhoBronze: caminho, linhasLidas: linhas.length + invalidas.length,
   });
+  for (const q of invalidas) await quarentenar(db, cargaId, q.registro, q.motivo);
   await auditar(db, 'ingest', 'INGESTAO_BRONZE', 'Carga', String(cargaId), {
     fonte: 'IBGE agregado 6579', ano, hash, linhas: linhas.length,
   });

@@ -45,11 +45,15 @@ export class IndicadoresService {
   ) {}
 
   private async meta(indicadorId: number): Promise<MetaIndicador> {
+    // RG-09 vale também no acesso direto por id: indicador sem parecer
+    // favorável não existe para o público — não só para a navegação.
+    // (Numerador/denominador de RECALCULO passam por aqui também; eles
+    // acompanham o status do indicador composto no fluxo de submissão.)
     const r = await this.db.query<MetaIndicador>(
       `SELECT "Indicador_Id" AS id, "Indicador_Nome" AS nome, "Indicador_Unidade" AS unidade,
               "Indicador_TipoAgregacao" AS tipo_agregacao,
               "Indicador_NumeradorId" AS numerador_id, "Indicador_DenominadorId" AS denominador_id
-         FROM "Indicador" WHERE "Indicador_Id" = $1`,
+         FROM "Indicador" WHERE "Indicador_Id" = $1 AND "Indicador_StatusValidacao" = 'APROVADO'`,
       [indicadorId],
     );
     if (!r.rows[0]) throw new NotFoundException(`Indicador ${indicadorId} não encontrado.`);
