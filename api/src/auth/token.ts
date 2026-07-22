@@ -6,7 +6,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  * verificar a assinatura sem ir ao banco. Segredo por env SESSION_SECRET
  * (fallback ADMIN_TOKEN em dev). A troca do segredo invalida todos os tokens.
  */
-export type Papel = 'ADMIN' | 'CURADOR' | 'PUBLICO';
+export type Papel = 'ADMIN' | 'CURADOR' | 'PUBLICO' | 'PARCEIRO' | 'UNIVERSIDADE';
 export interface Sessao { sub: string; papel: Papel; exp: number }
 
 function segredo(): string {
@@ -35,7 +35,7 @@ export function verificarToken(token: string): Sessao | null {
   try {
     const s = JSON.parse(Buffer.from(corpo, 'base64url').toString()) as Sessao;
     if (!s || typeof s.exp !== 'number' || s.exp < Math.floor(Date.now() / 1000)) return null;
-    if (!['ADMIN', 'CURADOR', 'PUBLICO'].includes(s.papel)) return null;
+    if (!['ADMIN', 'CURADOR', 'PUBLICO', 'PARCEIRO', 'UNIVERSIDADE'].includes(s.papel)) return null;
     return s;
   } catch {
     return null;

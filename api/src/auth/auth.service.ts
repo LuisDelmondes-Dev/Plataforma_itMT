@@ -49,6 +49,24 @@ export class AuthService implements OnModuleInit {
     if (!u || !u.ativo || !conferirSenha(senha, u.hash)) {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
-    return { token: emitirToken(email, u.papel), papel: u.papel, email };
+    // Papéis de contribuição (escrita externa) têm sessão mais curta: o
+    // token é stateless (não revalida no banco), então o TTL é o freio.
+    const ttl = u.papel === 'PARCEIRO' || u.papel === 'UNIVERSIDADE' ? 4 * 3600 : 8 * 3600;
+    return { token: emitirToken(email, u.papel, ttl), papel: u.papel, email };
+  }
+
+  /** Criação de conta por ADMIN (RF012): parceiro/universidade/curador. */
+  async criarUsuario(email: string, senha: string, papel: Papel): Promise<{ id: number }> {
+    const r = await this.db.query<{ id: number }>(
+      `INSERT INTO "Usuario" ("Usuario_Email","Usuario_SenhaHash","Usuario_Papel")
+       VALUES ($1,$2,$3)
+       ON CONFLICT ("Usuario_Email") DO UPDATE
+         SET "Usuario_SenhaHash" = EXCLUDED."Usuario_SenhaHash",
+             "Usuario_Papel" = EXCLUDED."Usuario_Papel",
+             "Usuario_Ativo" = true
+       RETURNING "Usuario_Id" AS id`,
+      [email, gerarHashSenha(senha), papel],
+    );
+    return { id: r.rows[0].id };
   }
 }
