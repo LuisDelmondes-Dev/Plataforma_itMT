@@ -54,6 +54,9 @@ else if (preset === 'custom') {
     tipo: arg('tipo', 'SOMA'), subtemaNome: arg('indicador'),
     fonte: `IBGE — agregado ${arg('agregado')} / variável ${arg('variavel')}`,
     refDia: '-12-31',
+    // Agregados classificados (ex.: PPM rebanho bovino = 79[2670]) — vai
+    // direto na querystring da API: --classificacao "79[2670]"
+    classificacao: arg('classificacao'),
   };
   if (!cfg.agregado || !cfg.variavel || !cfg.indicador) {
     console.error('custom exige --agregado, --variavel e --indicador.');
@@ -64,7 +67,10 @@ else if (preset === 'custom') {
   process.exit(1);
 }
 
-const URL = `https://servicodados.ibge.gov.br/api/v3/agregados/${cfg.agregado}/periodos/${ano}/variaveis/${cfg.variavel}?localidades=N6[N3[51]]`;
+const URL =
+  `https://servicodados.ibge.gov.br/api/v3/agregados/${cfg.agregado}/periodos/${ano}/variaveis/${cfg.variavel}` +
+  `?localidades=N6[N3[51]]` +
+  (cfg.classificacao ? `&classificacao=${cfg.classificacao}` : '');
 const db = pool();
 
 try {
