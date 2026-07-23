@@ -17,19 +17,21 @@ import io
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
-import tempfile
 import zipfile
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlencode
 
 import certifi
 import pandas as pd
 import psycopg
 import requests
+from lxml import html
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -77,44 +79,50 @@ def fetch_inep(ano: int | None = None) -> tuple[date, pd.DataFrame]:
     return date(ano, 12, 31), _normalizar(df, col_cod, col_val)
 
 
-def _competencias(n: int = 6):
-    """Últimas n competências (mais recente 1º) como (AAMM, último dia do mês)."""
-    d = date.today().replace(day=1)
-    for _ in range(n):
-        fim = (d + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-        yield f"{d.year % 100:02d}{d.month:02d}", fim
-        d = (d - timedelta(days=1)).replace(day=1)
+CNES_BASE = "http://tabnet.datasus.gov.br/cgi"
+CNES_DEF = "cnes/cnv/leiintmt.def"  # Leitos de INTERNAÇÃO, MT (o cubo de UTI é outro — ver README)
 
 
 def fetch_cnes(competencia: str | None = None) -> tuple[date, pd.DataFrame]:
-    """Leitos de UTI por município (MT) via TabNet/DATASUS (tabela HTML → dados).
+    """Leitos por município (MT) via TabNet/DATASUS.
 
-    O arquivo mensal do DATASUS é `leiintmt<AAMM>.dbf`; como a competência
-    publicada mais recente varia, tenta da atual para trás até achar uma que
-    responda (ausência de todas ⇒ erro claro, nada é estimado — RN-005).
+    Submissão dirigida pelo próprio formulário (robusto a mudanças de campo):
+    lê os `<select>` de `deftohtm.exe`, monta o corpo (cada dimensão em
+    "todas as categorias") e POSTa em `tabcgi.exe` — que é quem tabula
+    (deftohtm só renderiza a tela). O arquivo mensal é `ltmt<AAMM>.dbf`;
+    tenta as competências mais recentes até uma responder com dados.
+    Vazio em todas ⇒ erro claro (nada estimado — RN-005).
     """
-    url = "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?cnes/cnv/leiintmt.def"
-    tentativas = [(competencia, date.today())] if competencia else list(_competencias(6))
-    for comp, ref in tentativas:
-        # Campos do formulário TabNet — ponto único de calibração desta fonte.
-        params = {
-            "Linha": "Munic%EDpio", "Coluna": "--N%E3o-Ativa--",
-            "Incremento": "Quantidade_existente", "Arquivos": f"leiintmt{comp}.dbf",
-            "SLeito_UTI": "TODAS_AS_CATEGORIAS__",
-        }
-        r = _http.post(url, data=params, timeout=TIMEOUT)
-        r.raise_for_status()
+    tela = _http.get(f"{CNES_BASE}/deftohtm.exe?{CNES_DEF}", timeout=TIMEOUT)
+    tela.raise_for_status()
+    form = html.fromstring(tela.text).xpath("//form")[0]
+    campos = {}
+    for s in form.xpath(".//select"):
+        nome, vals = s.get("name"), [o.get("value") for o in s.xpath("./option")]
+        if nome:
+            campos[nome] = "TODAS_AS_CATEGORIAS__" if "TODAS_AS_CATEGORIAS__" in vals else (vals[0] if vals else "")
+    arquivos = [o.get("value") for o in form.xpath(".//select[@name='Arquivos']/option")]
+    if competencia:
+        arquivos = [a for a in arquivos if competencia in a] or arquivos[:1]
+
+    for arq in arquivos[:4]:
+        campos.update({"Linha": "Munic%EDpio", "Coluna": "--N%E3o-Ativa--",
+                       "Incremento": "Qtd_existente", "Arquivos": arq})
+        corpo = urlencode(campos, encoding="latin-1").encode("latin-1")
+        r = _http.post(f"{CNES_BASE}/tabcgi.exe?{CNES_DEF}", data=corpo,
+                       headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=TIMEOUT)
         try:
-            tabelas = pd.read_html(io.StringIO(r.text), decimal=",", thousands=".")
+            tab = max(pd.read_html(io.StringIO(r.text), decimal=",", thousands="."), key=len)
         except ValueError:
-            continue  # competência sem tabela de dados — tenta a anterior
-        tab = max(tabelas, key=len)
+            continue  # competência/consulta sem tabela — tenta a próxima
         tab.columns = ["municipio", "valor"] + list(tab.columns[2:])
         df = _normalizar(tab, "municipio", "valor")
         if not df.empty:
-            log.info("cnes: competência %s (%d municípios)", comp, len(df))
-            return ref, df
-    raise RuntimeError("CNES: nenhuma competência recente retornou dados — reveja os campos do TabNet.")
+            aamm = re.search(r"(\d{4})", arq)
+            ano = 2000 + int(aamm.group(1)[:2]) if aamm else date.today().year
+            log.info("cnes: %s (%d municípios)", arq, len(df))
+            return date(ano, 12, 31), df
+    raise RuntimeError("CNES: tabulação vazia — falta calibrar os campos do TabNet (ver README).")
 
 
 # ---------------------------------------------------------------- utilidades
