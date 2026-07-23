@@ -22,7 +22,7 @@ import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -77,22 +77,44 @@ def fetch_inep(ano: int | None = None) -> tuple[date, pd.DataFrame]:
     return date(ano, 12, 31), _normalizar(df, col_cod, col_val)
 
 
+def _competencias(n: int = 6):
+    """Últimas n competências (mais recente 1º) como (AAMM, último dia do mês)."""
+    d = date.today().replace(day=1)
+    for _ in range(n):
+        fim = (d + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        yield f"{d.year % 100:02d}{d.month:02d}", fim
+        d = (d - timedelta(days=1)).replace(day=1)
+
+
 def fetch_cnes(competencia: str | None = None) -> tuple[date, pd.DataFrame]:
-    """Leitos de UTI por município (MT) via TabNet/DATASUS (tabela HTML → dados)."""
-    hoje = date.today()
-    comp = competencia or f"{hoje.year if hoje.month > 2 else hoje.year - 1}"
+    """Leitos de UTI por município (MT) via TabNet/DATASUS (tabela HTML → dados).
+
+    O arquivo mensal do DATASUS é `leiintmt<AAMM>.dbf`; como a competência
+    publicada mais recente varia, tenta da atual para trás até achar uma que
+    responda (ausência de todas ⇒ erro claro, nada é estimado — RN-005).
+    """
     url = "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?cnes/cnv/leiintmt.def"
-    # Campos do formulário TabNet — ponto único de calibração desta fonte.
-    params = {
-        "Linha": "Munic%EDpio", "Coluna": "--N%E3o-Ativa--",
-        "Incremento": "Quantidade_SUS", "Arquivos": f"leiintmt{comp}.dbf",
-        "SLeito_UTI": "TODAS_AS_CATEGORIAS__", "formato": "table", "mostre": "Mostra",
-    }
-    r = _http.post(url, data=params, timeout=TIMEOUT)
-    r.raise_for_status()
-    df = max(pd.read_html(io.StringIO(r.text), decimal=",", thousands="."), key=len)
-    df.columns = ["municipio", "valor"] + list(df.columns[2:])
-    return date(int(comp[:4]), 12, 31), _normalizar(df, "municipio", "valor")
+    tentativas = [(competencia, date.today())] if competencia else list(_competencias(6))
+    for comp, ref in tentativas:
+        # Campos do formulário TabNet — ponto único de calibração desta fonte.
+        params = {
+            "Linha": "Munic%EDpio", "Coluna": "--N%E3o-Ativa--",
+            "Incremento": "Quantidade_existente", "Arquivos": f"leiintmt{comp}.dbf",
+            "SLeito_UTI": "TODAS_AS_CATEGORIAS__",
+        }
+        r = _http.post(url, data=params, timeout=TIMEOUT)
+        r.raise_for_status()
+        try:
+            tabelas = pd.read_html(io.StringIO(r.text), decimal=",", thousands=".")
+        except ValueError:
+            continue  # competência sem tabela de dados — tenta a anterior
+        tab = max(tabelas, key=len)
+        tab.columns = ["municipio", "valor"] + list(tab.columns[2:])
+        df = _normalizar(tab, "municipio", "valor")
+        if not df.empty:
+            log.info("cnes: competência %s (%d municípios)", comp, len(df))
+            return ref, df
+    raise RuntimeError("CNES: nenhuma competência recente retornou dados — reveja os campos do TabNet.")
 
 
 # ---------------------------------------------------------------- utilidades
