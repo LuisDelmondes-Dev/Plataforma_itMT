@@ -61,19 +61,16 @@ schtasks /Create /TN "ITMT-coletores" /SC DAILY /ST 05:30 /F ^
 O download real depende do layout de cada fonte — isolei isso para ser um ajuste
 de **uma linha**, não mudança de código:
 
-- **CNES** (`fetch_cnes`): já corrigido para o mecanismo real — POSTa em
-  `tabcgi.exe` (não `deftohtm.exe`, que só desenha o form), arquivo
-  `ltmt<AAMM>.dbf`, `Incremento=Qtd_existente`, submissão dirigida pelos
-  `<select>` do próprio formulário. **Pendência conhecida:** o `tabcgi`
-  responde com o cabeçalho certo mas ainda sem a tabela de dados (provável
-  codificação dos nomes de campo acentuados) — falta essa última calibração
-  contra o endpoint ao vivo. Fallback garantido enquanto isso: no navegador,
-  gere a tabela e use **"Copia como .CSV"**, e rode
-  `node api/scripts/ingestar-csv.mjs` com o config do CNES.
-  **Atenção de semântica:** `leiintmt.def` é **leitos de internação**, não
-  UTI (o cubo de UTI/complementares tem outro `.def`, não localizado com os
-  nomes padrão). Não alimente o indicador "Leitos de UTI" com este cubo sem
-  ajustar o rótulo.
+- **CNES** (`fetch_cnes`): **funcionando** (validado ao vivo — 96 municípios,
+  Jun/2026). Fluxo real do TabNet: lê o formulário (`deftohtm.exe`), POSTa a
+  consulta em `tabcgi.exe` (arquivo `ltmt<AAMM>.dbf`, `Incremento=Qtd_existente`,
+  cada dimensão em "todas as categorias", corpo latin-1 codificado UMA vez) e
+  **segue o link do CSV** que o TabNet gera (`/csv/…leiintmt<hash>.csv`) — a
+  forma limpa de obter os dados. Alimenta o indicador **"Leitos de internação"**.
+  **UTI ainda pendente:** `leiintmt.def` é **internação**, não UTI — o cubo de
+  UTI/complementares tem outro `.def` (não localizado com nomes padrão:
+  `leicompmt`/`leicomplmt`/`complbr` retornam erro). Quando a fonte de UTI for
+  achada, entra como coletor/indicador separado, sem misturar com internação.
 - **INEP** (`fetch_inep`): a detecção da aba (`matríc`) e das colunas
   (`_coluna(...)` com as pistas "código do município" e "pública") cobre o
   layout recente; a Sinopse muda de forma entre anos.

@@ -79,23 +79,39 @@ def fetch_inep(ano: int | None = None) -> tuple[date, pd.DataFrame]:
     return date(ano, 12, 31), _normalizar(df, col_cod, col_val)
 
 
-CNES_BASE = "http://tabnet.datasus.gov.br/cgi"
-CNES_DEF = "cnes/cnv/leiintmt.def"  # Leitos de INTERNAÇÃO, MT (o cubo de UTI é outro — ver README)
+CNES_HOST = "http://tabnet.datasus.gov.br"
+CNES_DEF = "cnes/cnv/leiintmt.def"  # Leitos de INTERNAÇÃO, MT (UTI é cubo distinto — ver README)
+
+
+def _parse_tabnet_csv(texto: str) -> pd.DataFrame:
+    """CSV do TabNet: metadados no topo, cabeçalho '"Município";"<medida>"',
+    linhas '"<cod> NOME";<valor>' e rodapé de notas. Extrai codigo_ibge+valor."""
+    linhas = texto.splitlines()
+    ini = next((i for i, l in enumerate(linhas) if l.lower().startswith('"munic')), None)
+    if ini is None:
+        return pd.DataFrame(columns=["codigo_ibge", "valor"])
+    regs = []
+    for l in linhas[ini + 1:]:
+        if not l.startswith('"'):
+            break  # fim dos dados (rodapé de notas)
+        p = l.split(";")
+        if len(p) >= 2:
+            regs.append({"municipio": p[0].strip('"'), "valor": p[1].strip('"')})
+    return _normalizar(pd.DataFrame(regs), "municipio", "valor")
 
 
 def fetch_cnes(competencia: str | None = None) -> tuple[date, pd.DataFrame]:
-    """Leitos por município (MT) via TabNet/DATASUS.
+    """Leitos de internação existentes por município (MT), via TabNet/DATASUS.
 
-    Submissão dirigida pelo próprio formulário (robusto a mudanças de campo):
-    lê os `<select>` de `deftohtm.exe`, monta o corpo (cada dimensão em
-    "todas as categorias") e POSTa em `tabcgi.exe` — que é quem tabula
-    (deftohtm só renderiza a tela). O arquivo mensal é `ltmt<AAMM>.dbf`;
-    tenta as competências mais recentes até uma responder com dados.
-    Vazio em todas ⇒ erro claro (nada estimado — RN-005).
+    Fluxo real do TabNet: lê o formulário (deftohtm) para montar o corpo
+    (cada dimensão em "todas as categorias"), POSTa a consulta em tabcgi (que
+    tabula) e SEGUE o link do CSV que o TabNet gera — a forma limpa de obter
+    os dados. Arquivo mensal `ltmt<AAMM>.dbf`; tenta as competências recentes.
+    NB: este cubo é INTERNAÇÃO, não UTI (cubo distinto).
     """
-    tela = _http.get(f"{CNES_BASE}/deftohtm.exe?{CNES_DEF}", timeout=TIMEOUT)
-    tela.raise_for_status()
-    form = html.fromstring(tela.text).xpath("//form")[0]
+    form = html.fromstring(
+        _http.get(f"{CNES_HOST}/cgi/deftohtm.exe?{CNES_DEF}", timeout=TIMEOUT).text
+    ).xpath("//form")[0]
     campos = {}
     for s in form.xpath(".//select"):
         nome, vals = s.get("name"), [o.get("value") for o in s.xpath("./option")]
@@ -106,23 +122,24 @@ def fetch_cnes(competencia: str | None = None) -> tuple[date, pd.DataFrame]:
         arquivos = [a for a in arquivos if competencia in a] or arquivos[:1]
 
     for arq in arquivos[:4]:
-        campos.update({"Linha": "Munic%EDpio", "Coluna": "--N%E3o-Ativa--",
+        # Valores RAW (com acento) — o urlencode(latin-1) codifica uma vez só.
+        campos.update({"Linha": "Município", "Coluna": "--Não-Ativa--",
                        "Incremento": "Qtd_existente", "Arquivos": arq})
-        corpo = urlencode(campos, encoding="latin-1").encode("latin-1")
-        r = _http.post(f"{CNES_BASE}/tabcgi.exe?{CNES_DEF}", data=corpo,
-                       headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=TIMEOUT)
-        try:
-            tab = max(pd.read_html(io.StringIO(r.text), decimal=",", thousands="."), key=len)
-        except ValueError:
-            continue  # competência/consulta sem tabela — tenta a próxima
-        tab.columns = ["municipio", "valor"] + list(tab.columns[2:])
-        df = _normalizar(tab, "municipio", "valor")
+        res = _http.post(f"{CNES_HOST}/cgi/tabcgi.exe?{CNES_DEF}",
+                         data=urlencode(campos, encoding="latin-1").encode("latin-1"),
+                         headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=TIMEOUT)
+        links = html.fromstring(res.text).xpath("//a[contains(@href,'.csv')]/@href")
+        if not links:
+            continue
+        csv = _http.get(CNES_HOST + links[0], timeout=TIMEOUT)
+        csv.encoding = "latin-1"
+        df = _parse_tabnet_csv(csv.text)
         if not df.empty:
-            aamm = re.search(r"(\d{4})", arq)
-            ano = 2000 + int(aamm.group(1)[:2]) if aamm else date.today().year
+            m = re.search(r"(\d{2})(\d{2})", arq)  # AAMM
+            ref = date(2000 + int(m.group(1)), int(m.group(2)), 28) if m else date.today()
             log.info("cnes: %s (%d municípios)", arq, len(df))
-            return date(ano, 12, 31), df
-    raise RuntimeError("CNES: tabulação vazia — falta calibrar os campos do TabNet (ver README).")
+            return ref, df
+    raise RuntimeError("CNES: TabNet não gerou CSV com dados — ver README.")
 
 
 # ---------------------------------------------------------------- utilidades
@@ -181,7 +198,7 @@ class Coletor:
 
 
 COLETORES = {
-    "cnes": Coletor("cnes", "cnes-leitos.json", "Leitos de UTI", fetch_cnes),
+    "cnes": Coletor("cnes", "cnes-internacao.json", "Leitos de internação", fetch_cnes),
     "inep": Coletor("inep", "inep-matriculas.json", "Matrículas na rede pública", fetch_inep),
 }
 

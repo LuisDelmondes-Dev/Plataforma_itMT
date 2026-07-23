@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "CNES/DATASUS — Leitos de internação existentes (TabNet)",
+    "origem": "Ministério da Saúde — Cadastro Nacional de Estabelecimentos de Saúde",
+    "url": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?cnes/cnv/leiintmt.def",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Informações de Saúde — DATASUS (Lei 12.527/2011)",
+    "periodicidade": "MENSAL"
+  },
+  "indicador": { "nome": "Leitos de internação", "unidade": "leitos", "tipoAgregacao": "SOMA", "subtemaNome": "Leitos de internação" },
+  "colunas": { "codigoIbge": "codigo_ibge", "valor": "valor" },
+  "dataReferencia": "2026-06-28",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}
