@@ -17,7 +17,8 @@
     "refrescar:fontes": "node scripts/refrescar-fontes.mjs",
     "manter:particoes": "node scripts/manter-particoes.mjs",
     "golden:gerar": "node scripts/gerar-golden-set.mjs",
-    "golden:avaliar": "node scripts/avaliar-golden-set.mjs"
+    "golden:avaliar": "node scripts/avaliar-golden-set.mjs",
+    "coletar:fontes": "node scripts/coletar-fontes.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

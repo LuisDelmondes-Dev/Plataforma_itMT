@@ -31,17 +31,30 @@ Pré-requisito de catálogo: os subtemas `Matrículas — rede pública` e
 `Número de leitos / vagas de UTI` devem existir em `SubtemaConsulta` (senão o
 conector aborta) — mesmo padrão dos demais.
 
-## Agendamento diário, invisível (Windows)
+## Agendamento diário no backend (automático)
 
-`pythonw` roda sem janela; o Task Scheduler dispara 1×/dia:
+Já está ligado no backend: o serviço **`rotinas`** (loop diário do
+`docker-compose.prod.yml`) chama `node scripts/coletar-fontes.mjs`, que
+dispara este coletor — ao lado de `refrescar-fontes` e `verificar-cadeia`.
+O wrapper resolve o venv, degrada com elegância (sem Python instalado,
+avisa e não derruba o loop) e é desligável por `COLETORES_AUTO=0`.
+
+```bash
+cd api && node scripts/coletar-fontes.mjs   # o que o rotinas roda 1×/dia
+# ou: npm run coletar:fontes
+```
+
+> A imagem do serviço `rotinas` precisa ter Python + o venv de `coletores/`.
+> Sem eles, o wrapper apenas avisa e segue — a coleta fica pendente até o
+> ambiente ter Python, sem quebrar as outras rotinas.
+
+**Dev no Windows (sem Docker):** agende o mesmo wrapper com o Task
+Scheduler (`pythonw` roda sem janela):
 
 ```bat
 schtasks /Create /TN "ITMT-coletores" /SC DAILY /ST 05:30 /F ^
-  /TR "cmd /c cd /d C:\DevClaude\Plataforma itMT && set DATABASE_URL=postgres://itmt:itmt@localhost:5432/itmt && coletores\.venv\Scripts\pythonw.exe -m coletores.coletar_fontes"
+  /TR "cmd /c cd /d C:\DevClaude\Plataforma itMT\api && set DATABASE_URL=postgres://itmt:itmt@localhost:5432/itmt && node scripts\coletar-fontes.mjs"
 ```
-
-Em produção (Linux/compose), o mesmo comando entra no serviço `rotinas`
-(cron `30 5 * * *`), ao lado de `refrescar:fontes` e `verificar-cadeia`.
 
 ## Pontos de calibração (uma vez, contra o endpoint ao vivo)
 

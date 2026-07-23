@@ -45,6 +45,8 @@ services:
         node scripts/manter-particoes.mjs || echo "[rotinas] ALERTA: partições falhou";
         echo "[rotinas] $(date -Iseconds) refrescar-fontes";
         node scripts/refrescar-fontes.mjs || echo "[rotinas] ALERTA: refresh de fontes falhou";
+        echo "[rotinas] $(date -Iseconds) coletar-fontes (CNES/INEP via Python)";
+        node scripts/coletar-fontes.mjs || echo "[rotinas] ALERTA: coleta de fontes falhou";
         echo "[rotinas] $(date -Iseconds) alerta:fontes";
         node scripts/alerta-fontes.mjs || echo "[rotinas] ALERTA: fontes falhou";
         echo "[rotinas] $(date -Iseconds) verificar-cadeia";
