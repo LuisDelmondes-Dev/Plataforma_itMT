@@ -1,14 +1,18 @@
-import { Controller, Get, Param, Post } from '@nestjs/common';
+import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { AgentesFonteService } from './agentes-fonte.service';
+import { AdminGuard } from '../admin/admin.controller';
 
 /**
- * F5 — Agentes de fonte. GET lista a situação de cada fonte (banco
- * primeiro); POST pede ao agente que pesquise — ele mesmo decide se
- * responde do banco ou vai à fonte oficial (só quando falta/venceu).
- * Público: o rate limit global e o mutex por agente contêm abuso, e
- * o pior caso é uma carga idempotente da fonte oficial.
+ * F5 — Agentes de fonte (ferramenta de OPERAÇÃO, não de usuário final).
+ * Para o público, o agente é imperceptível: toda consulta que dá
+ * ausência dispara a auto-busca (garantirParaIndicador) nos bastidores —
+ * banco primeiro, fonte oficial só quando falta/venceu, e a consulta é
+ * refeita. Estes endpoints existem para o curador inspecionar a situação
+ * das fontes e forçar uma pesquisa; por isso exigem papel de gestão
+ * (ADMIN_TOKEN ou sessão ADMIN/CURADOR).
  */
 @Controller('agentes/fontes')
+@UseGuards(AdminGuard)
 export class AgentesFonteController {
   constructor(private readonly svc: AgentesFonteService) {}
 

@@ -31,7 +31,9 @@ const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof 
       { href: '/painel', rotulo: 'Painel', icone: 'painel' },
       { href: '/xingu', rotulo: 'IA Xingú', icone: 'xingu' },
       { href: '/municipio/5103403', rotulo: 'Fichas municipais', icone: 'ficha' },
-      { href: '/fontes', rotulo: 'Agentes de fonte', icone: 'fontes' },
+      // "/fontes" saiu do menu público de propósito: os agentes de fonte
+      // trabalham nos bastidores (auto-busca em toda consulta com ausência);
+      // a página segue existindo como ferramenta de operação, com token.
     ],
   },
   {

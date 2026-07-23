@@ -42,31 +42,46 @@ const ROTULO_RESUMO: Record<string, string> = {
 };
 
 /**
- * F5 — Agentes de fonte: banco primeiro; internet só quando falta ou
- * venceu. O usuário vê a decisão do agente e o log da pesquisa.
+ * F5 — Agentes de fonte: página de OPERAÇÃO (curador), fora do menu
+ * público. Para o usuário final o agente é imperceptível: toda consulta
+ * com ausência dispara a auto-busca nos bastidores. Aqui o operador
+ * inspeciona a situação das fontes e força uma pesquisa — com token de
+ * gestão (mesmo padrão do app de campo).
  */
 export default function Fontes() {
+  const [token, setToken] = useState('');
+  const [autenticado, setAutenticado] = useState(false);
   const [agentes, setAgentes] = useState<Agente[]>([]);
   const [resultados, setResultados] = useState<Record<string, Resultado>>({});
   const [pesquisando, setPesquisando] = useState<Record<string, boolean>>({});
   const [erro, setErro] = useState<string | null>(null);
 
-  async function carregar() {
+  async function carregar(t = token) {
     try {
-      const r = await fetch('/api/v1/agentes/fontes');
-      if (!r.ok) throw new Error(`Falha ao listar (${r.status}).`);
+      const r = await fetch('/api/v1/agentes/fontes', { headers: { Authorization: `Bearer ${t}` } });
+      if (!r.ok) throw new Error(r.status === 403 ? 'Token inválido.' : `Falha ao listar (${r.status}).`);
       setAgentes(await r.json());
+      setAutenticado(true);
+      sessionStorage.setItem('itmt.fontes.token', t);
       setErro(null);
     } catch (e) {
+      setAutenticado(false);
       setErro(e instanceof Error ? e.message : 'Falha ao listar agentes.');
     }
   }
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => {
+    const t = sessionStorage.getItem('itmt.fontes.token');
+    if (t) { setToken(t); carregar(t); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function pesquisar(slug: string) {
     setPesquisando((p) => ({ ...p, [slug]: true }));
     try {
-      const r = await fetch(`/api/v1/agentes/fontes/${slug}/pesquisar`, { method: 'POST' });
+      const r = await fetch(`/api/v1/agentes/fontes/${slug}/pesquisar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const corpo = await r.json();
       if (!r.ok) throw new Error(corpo?.message ?? `Falha (${r.status}).`);
       setResultados((m) => ({ ...m, [slug]: corpo }));
@@ -94,9 +109,41 @@ export default function Fontes() {
           </span>
         : <span className="chip construcao">Requer arquivo oficial (passo manual)</span>;
 
+  if (!autenticado) {
+    return (
+      <div style={{ maxWidth: 520 }}>
+        <div className="overline">Operação</div>
+        <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
+          Agentes de fonte
+        </h1>
+        <p style={{ color: 'var(--ink-2)' }}>
+          Ferramenta de curadoria — não é necessária para consultar o portal: os agentes
+          buscam dados nas fontes oficiais <strong>automaticamente</strong>, nos bastidores,
+          sempre que uma consulta encontra dado ausente ou vencido.
+        </p>
+        <div className="card">
+          <label className="label-md" htmlFor="token-fontes">Token de gestão (ADMIN/CURADOR)</label>
+          <input
+            id="token-fontes"
+            className="campo"
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && carregar()}
+            style={{ marginTop: 8 }}
+          />
+          <button className="btn primaria" style={{ marginTop: 10 }} onClick={() => carregar()}>
+            Entrar
+          </button>
+          {erro && <p className="aviso" role="alert" style={{ marginTop: 10 }}>{erro}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 960 }}>
-      <div className="overline">Dados</div>
+      <div className="overline">Operação</div>
       <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
         Agentes de fonte
       </h1>
@@ -105,7 +152,7 @@ export default function Fontes() {
         dentro da validade, ele responde <strong>do banco</strong>; só vai à internet quando
         falta ou venceu — e toda busca passa pelo pipeline Bronze→Prata→Ouro com procedência
         e auditoria. Indicador novo continua nascendo <span className="mono">EM_ANALISE</span> até
-        parecer humano (RG-09).
+        parecer humano (RG-09). Para o público, isso roda automaticamente nos bastidores.
       </p>
 
       {erro && <p className="aviso" role="alert">{erro}</p>}
