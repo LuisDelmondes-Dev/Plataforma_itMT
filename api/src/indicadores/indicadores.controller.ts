@@ -104,6 +104,44 @@ export class IndicadoresController {
     });
   }
 
+  /**
+   * GET /v1/indicadores/:id/cenarios?recorte=&codigo=&horizonte=5&taxas=2.5,5,-1
+   * Simulador determinístico: crescimento composto por taxa + tendência OLS
+   * como referência. Categoria CENARIO — hipótese declarada, nunca "dado".
+   */
+  @Get('indicadores/:id/cenarios')
+  cenarios(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('recorte') recorte: string,
+    @Query('codigo') codigo?: string,
+    @Query('horizonte') horizonte?: string,
+    @Query('taxas') taxas?: string,
+  ) {
+    const rec = (recorte ?? 'ESTADO').toUpperCase() as Recorte;
+    if (!RECORTES.includes(rec))
+      throw new BadRequestException(`recorte deve ser um de: ${RECORTES.join(', ')}`);
+    if (rec !== 'ESTADO' && !codigo)
+      throw new BadRequestException(`recorte ${rec} exige o parâmetro codigo`);
+    const lista = (taxas ?? '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map(Number);
+    if (!lista.length) throw new BadRequestException('Informe taxas=t1,t2,… (% ao ano).');
+    if (lista.length > 4) throw new BadRequestException('No máximo 4 taxas por simulação.');
+    for (const t of lista)
+      if (!Number.isFinite(t) || t < -50 || t > 50)
+        throw new BadRequestException('Cada taxa deve ser um número entre -50 e 50 (% ao ano).');
+    const h = Number(horizonte);
+    return this.projecao.cenarios({
+      indicadorId: id,
+      recorte: rec,
+      codigo: codigo ?? null,
+      horizonte: Number.isFinite(h) && h > 0 ? h : 5,
+      taxas: lista,
+    });
+  }
+
   /** GET /v1/indicadores/:id/mapa?referencia=AAAA-MM-DD — valor por município p/ coroplético */
   @Get('indicadores/:id/mapa')
   mapa(@Param('id', ParseIntPipe) id: number, @Query('referencia') referencia?: string) {

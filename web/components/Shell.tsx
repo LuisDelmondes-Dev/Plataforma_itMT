@@ -13,6 +13,7 @@ const I = {
   geoportal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m9 4-5 2v14l5-2 6 2 5-2V4l-5 2-6-2Z" /><path d="M9 4v14M15 6v14" /></svg>,
   mapa: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.1-6-10a6 6 0 1 1 12 0c0 4.9-6 10-6 10Z" /><circle cx="12" cy="11" r="2.2" /></svg>,
   painel: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7.5" height="9" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="5.5" rx="1.5" /><rect x="13.5" y="12" width="7.5" height="9" rx="1.5" /><rect x="3" y="15.5" width="7.5" height="5.5" rx="1.5" /></svg>,
+  cenarios: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 20h18" /><path d="M4 16l5-5 4 3 7-8" /><path d="M13 20l3-4 4 2" strokeDasharray="3 3" /></svg>,
   acervo: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="m3.5 15 5-5 5 5 3-3 4 4" /><circle cx="9" cy="9.5" r="1.2" /></svg>,
   campo: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6.5-5.4-6.5-10a6.5 6.5 0 0 1 13 0c0 4.6-6.5 10-6.5 10Z" /><circle cx="12" cy="11" r="2.3" /></svg>,
   cobertura: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="4" y="4" width="7" height="7" rx="1.2" /><rect x="13" y="4" width="7" height="7" rx="1.2" /><rect x="4" y="13" width="7" height="7" rx="1.2" /><rect x="13" y="13" width="7" height="7" rx="1.2" /></svg>,
@@ -29,6 +30,7 @@ const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof 
       { href: '/consulta', rotulo: 'Indicadores', icone: 'indicadores' },
       { href: '/mapa', rotulo: 'Mapa', icone: 'mapa' },
       { href: '/painel', rotulo: 'Painel', icone: 'painel' },
+      { href: '/cenarios', rotulo: 'Cenários', icone: 'cenarios' },
       { href: '/xingu', rotulo: 'IA Xingú', icone: 'xingu' },
       { href: '/municipio/5103403', rotulo: 'Fichas municipais', icone: 'ficha' },
       // "/fontes" saiu do menu público de propósito: os agentes de fonte

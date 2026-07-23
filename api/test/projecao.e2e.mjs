@@ -92,6 +92,29 @@ test('série curta não projeta: 422, nada é estimado', async () => {
   assert.ok(String(d.message).includes('4 pontos'), 'mensagem deve citar o mínimo de pontos');
 });
 
+test('cenários: determinísticos, compostos corretamente e declarados como hipótese', async () => {
+  const url = `${BASE}/indicadores/1/cenarios?recorte=MUNICIPIO&codigo=5103403&horizonte=3&taxas=10,-5`;
+  const a = await (await fetch(url)).json();
+  const b = await (await fetch(url)).json();
+  assert.deepEqual(a, b, 'duas simulações idênticas divergiram');
+  assert.equal(a.categoria, 'CENARIO');
+  assert.ok(a.aviso.includes('hipóteses'), 'aviso de hipótese ausente');
+  // matemática composta: 1º ano da taxa +10% = base × 1.1 (2 casas)
+  const cen10 = a.cenarios.find((c) => c.rotulo === '+10% a.a.');
+  assert.ok(cen10, 'cenário +10% ausente');
+  assert.equal(cen10.pontos[0].valor, Math.round(a.base.valor * 1.1 * 100) / 100);
+  assert.equal(cen10.pontos.length, 3);
+  // cada cenário declara o próprio método
+  for (const c of a.cenarios) assert.ok(c.metodo.length > 10, `método ausente em ${c.rotulo}`);
+});
+
+test('cenários: taxas inválidas são recusadas (400), nada é simulado', async () => {
+  for (const taxas of ['', '999', 'abc']) {
+    const r = await fetch(`${BASE}/indicadores/1/cenarios?recorte=ESTADO&taxas=${taxas}`);
+    assert.equal(r.status, 400, `taxas="${taxas}" deveria ser 400`);
+  }
+});
+
 test('RG-09 vale na projeção: indicador sem parecer é 404 por id direto', async () => {
   const criado = await (
     await fetch(`${BASE}/admin/indicadores`, {
