@@ -30,6 +30,8 @@ import certifi
 import pandas as pd
 import psycopg
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 RAIZ = Path(__file__).resolve().parents[1]
 API_DIR = RAIZ / "api"
@@ -38,9 +40,21 @@ SAIDA = Path(__file__).resolve().parent / ".baixados"
 UF_MT, TIMEOUT = "51", 90
 
 log = logging.getLogger("coletores")
-_http = requests.Session()
-_http.verify = certifi.where()  # cadeia de CAs confiável (evita SSLError do INEP)
-_http.headers["User-Agent"] = "ITMT-coletor/1.0 (+dados abertos)"
+
+
+def _sessao() -> requests.Session:
+    """Sessão HTTP resiliente: CAs do certifi + retry para endpoints gov instáveis."""
+    s = requests.Session()
+    s.verify = certifi.where()  # cadeia de CAs confiável (evita SSLError do INEP)
+    s.headers["User-Agent"] = "ITMT-coletor/1.0 (+dados abertos)"
+    retry = Retry(total=4, backoff_factor=1.5,
+                  status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET", "POST"))
+    for esquema in ("http://", "https://"):
+        s.mount(esquema, HTTPAdapter(max_retries=retry))
+    return s
+
+
+_http = _sessao()
 
 
 # ---------------------------------------------------------------- fetchers
