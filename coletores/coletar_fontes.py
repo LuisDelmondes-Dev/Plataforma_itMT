@@ -18,8 +18,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from datetime import date
@@ -31,6 +33,7 @@ import truststore
 import pandas as pd
 import psycopg
 import requests
+import openpyxl
 from lxml import html
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -64,24 +67,96 @@ def _sessao() -> requests.Session:
 _http = _sessao()
 
 
+def _baixar_cache(url: str, nome: str, timeout: int = 300) -> bytes:
+    """Cache local por versão/ano; evita baixar novamente após falha de parsing."""
+    SAIDA.mkdir(exist_ok=True)
+    caminho = SAIDA / nome
+    if caminho.exists() and caminho.stat().st_size:
+        return caminho.read_bytes()
+    headers = {"Connection": "close"} if "download.inep.gov.br" in url else None
+    resposta = _http.get(url, timeout=timeout, headers=headers)
+    resposta.raise_for_status()
+    caminho.write_bytes(resposta.content)
+    return resposta.content
+
+
+def _chave_nome(valor: str) -> str:
+    texto = unicodedata.normalize("NFKD", str(valor)).encode("ascii", "ignore").decode()
+    return re.sub(r"[^A-Z0-9]", "", texto.upper())
+
+
+def _municipios() -> dict[str, str]:
+    """Nome normalizado -> código IBGE; impede aproximações silenciosas."""
+    with psycopg.connect(os.environ["DATABASE_URL"]) as con, con.cursor() as cur:
+        cur.execute('SELECT "Municipio_Nome", "Municipio_CodigoIbge" FROM "Municipio"')
+        return {_chave_nome(nome): codigo for nome, codigo in cur.fetchall()}
+
+
+def _por_nome(df: pd.DataFrame, coluna_nome: str, coluna_valor: str,
+              *, preencher_zeros: bool = False) -> pd.DataFrame:
+    municipios = _municipios()
+    # Alias explícito e auditável para grafia divergente da fonte; nunca fuzzy match.
+    aliases = {"SANTOANTONIODOLEVERGER": "SANTOANTONIODELEVERGER"}
+    nomes = df[coluna_nome].map(_chave_nome).replace(aliases)
+    desconhecidos = sorted(set(nomes) - set(municipios))
+    if desconhecidos:
+        raise ValueError(f"municípios da fonte sem correspondência no IBGE: {desconhecidos[:10]}")
+    valores = pd.to_numeric(df[coluna_valor], errors="coerce").fillna(0)
+    out = pd.DataFrame({"codigo_ibge": nomes.map(municipios), "valor": valores})
+    out = out.groupby("codigo_ibge", as_index=False)["valor"].sum()
+    if preencher_zeros:
+        base = pd.DataFrame({"codigo_ibge": list(municipios.values())})
+        out = base.merge(out, how="left", on="codigo_ibge").fillna({"valor": 0})
+    return out.sort_values("codigo_ibge").reset_index(drop=True)
+
+
 # ---------------------------------------------------------------- fetchers
-def fetch_inep(ano: int | None = None) -> tuple[date, pd.DataFrame]:
-    """Sinopse da Educação Básica: matrículas por município (MT, rede pública)."""
+_INEP_CACHE: dict[int, dict[str, pd.DataFrame]] = {}
+
+
+def _tabelas_inep(ano: int) -> dict[str, pd.DataFrame]:
+    """Lê apenas duas abas da sinopse de 232 MB em modo streaming."""
+    if ano in _INEP_CACHE:
+        return _INEP_CACHE[ano]
     ano = ano or date.today().year - 1
     base = "https://download.inep.gov.br/dados_abertos/sinopses_estatisticas"
-    r = _http.get(f"{base}/sinopse_estatistica_censo_escolar_{ano}.zip", timeout=TIMEOUT)
-    r.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+    conteudo = _baixar_cache(
+        f"{base}/sinopse_estatistica_censo_escolar_{ano}.zip", f"inep-sinopse-{ano}.zip", 900,
+    )
+    with zipfile.ZipFile(io.BytesIO(conteudo)) as z:
         xlsx = next(n for n in z.namelist() if n.lower().endswith(".xlsx"))
-        planilha = pd.ExcelFile(z.open(xlsx))
-    aba = next(s for s in planilha.sheet_names if "matríc" in s.lower() or "matric" in s.lower())
-    bruto = planilha.parse(aba, header=None)
-    # a linha de cabeçalho é a que contém "Código do Município"; abaixo dela, os dados
-    cab = bruto.index[bruto.astype(str).apply(lambda r: r.str.contains("Município", case=False)).any(axis=1)][0]
-    df = planilha.parse(aba, header=cab)
-    col_cod = _coluna(df, "código do município", "cod")
-    col_val = _coluna(df, "pública", "total")  # matrículas na rede pública
-    return date(ano, 12, 31), _normalizar(df, col_cod, col_val)
+        xlsx_cache = SAIDA / f"inep-sinopse-{ano}.xlsx"
+        if not xlsx_cache.exists() or not xlsx_cache.stat().st_size:
+            with z.open(xlsx) as origem, xlsx_cache.open("wb") as destino:
+                shutil.copyfileobj(origem, destino, 1024 * 1024)
+        livro = openpyxl.load_workbook(xlsx_cache, read_only=True, data_only=True)
+        try:
+            def extrair(aba: str, indice_valor: int) -> pd.DataFrame:
+                linhas = []
+                for row in livro[aba].iter_rows(values_only=True):
+                    codigo = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ""
+                    if re.fullmatch(r"51\d{5}", codigo):
+                        linhas.append({"codigo_ibge": codigo, "valor": row[indice_valor]})
+                return _normalizar(pd.DataFrame(linhas), "codigo_ibge", "valor")
+
+            resultado = {
+                "matriculas": extrair("1.2", 5),       # Rede Pública / Total
+                "escolas": extrair("Educação Básica 3.1", 4),  # Total de estabelecimentos ativos
+            }
+        finally:
+            livro.close()
+    _INEP_CACHE[ano] = resultado
+    return resultado
+
+
+def fetch_inep(ano: int | None = None) -> tuple[date, pd.DataFrame]:
+    ano = ano or date.today().year - 1
+    return date(ano, 12, 31), _tabelas_inep(ano)["matriculas"]
+
+
+def fetch_inep_escolas(ano: int | None = None) -> tuple[date, pd.DataFrame]:
+    ano = ano or date.today().year - 1
+    return date(ano, 12, 31), _tabelas_inep(ano)["escolas"]
 
 
 CNES_HOST = "http://tabnet.datasus.gov.br"
@@ -181,6 +256,88 @@ def fetch_cnes_estabelecimentos(competencia: str | None = None) -> tuple[date, p
     raise RuntimeError("CNES estabelecimentos: TabNet não gerou CSV com dados.")
 
 
+def fetch_cnes_uti() -> tuple[date, pd.DataFrame]:
+    """Leitos de UTI existentes, no cubo mensal específico do CNES/TabNet."""
+    definicao = "cnes/cnv/leiutimt.def"
+    form = html.fromstring(
+        _http.get(f"{CNES_HOST}/cgi/deftohtm.exe?{definicao}", timeout=TIMEOUT).text
+    ).xpath("//form")[0]
+    campos = {}
+    for seletor in form.xpath(".//select"):
+        nome, vals = seletor.get("name"), [o.get("value") for o in seletor.xpath("./option")]
+        if nome:
+            campos[nome] = "TODAS_AS_CATEGORIAS__" if "TODAS_AS_CATEGORIAS__" in vals else (vals[0] if vals else "")
+    arquivos = [o.get("value") for o in form.xpath(".//select[@name='Arquivos']/option")]
+    for arq in arquivos[:4]:
+        campos.update({"Linha": "Município", "Coluna": "--Não-Ativa--",
+                       "Incremento": "Quantidade_existente", "Arquivos": arq})
+        res = _http.post(
+            f"{CNES_HOST}/cgi/tabcgi.exe?{definicao}",
+            data=urlencode(campos, encoding="latin-1").encode("latin-1"),
+            headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=TIMEOUT,
+        )
+        links = html.fromstring(res.text).xpath("//a[contains(@href,'.csv')]/@href")
+        if not links:
+            continue
+        csv = _http.get(CNES_HOST + links[0], timeout=TIMEOUT)
+        csv.encoding = "latin-1"
+        dados = _parse_tabnet_csv(csv.text)
+        if not dados.empty:
+            m = re.search(r"(\d{2})(\d{2})", arq)
+            ref = date(2000 + int(m.group(1)), int(m.group(2)), 28) if m else date.today()
+            log.info("cnes-uti: %s (%d municípios)", arq, len(dados))
+            return ref, dados
+    raise RuntimeError("CNES UTI: TabNet não gerou CSV com dados.")
+
+
+def fetch_inpe(ano: int | None = None) -> tuple[date, pd.DataFrame]:
+    """Focos anuais consolidados do satélite de referência do INPE."""
+    ano = ano or date.today().year - 1
+    url = ("https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/anual/"
+           f"Brasil_sat_ref/focos_br_ref_{ano}.zip")
+    conteudo = _baixar_cache(url, f"inpe-focos-{ano}.zip")
+    with zipfile.ZipFile(io.BytesIO(conteudo)) as z:
+        csv = next(n for n in z.namelist() if n.lower().endswith(".csv"))
+        dados = pd.read_csv(z.open(csv), usecols=["estado", "municipio"])
+    mt = dados[dados["estado"].eq("MATO GROSSO")].groupby("municipio", as_index=False).size()
+    mt = mt.rename(columns={"size": "focos"})
+    return date(ano, 12, 31), _por_nome(mt, "municipio", "focos", preencher_zeros=True)
+
+
+def fetch_mapbiomas(ano: int | None = None) -> tuple[date, pd.DataFrame]:
+    """Área natural municipal da versão mais recente do DOI oficial."""
+    meta = _http.get(
+        "https://data.mapbiomas.org/api/datasets/:persistentId/",
+        params={"persistentId": "doi:10.58053/MapBiomas/SJZOLT"}, timeout=TIMEOUT,
+    )
+    meta.raise_for_status()
+    arquivos = meta.json()["data"]["latestVersion"]["files"]
+    arquivo = next(
+        f["dataFile"] for f in arquivos
+        if f["label"].lower().endswith(".xlsx") and "coverage" in f["label"].lower()
+    )
+    conteudo = _baixar_cache(
+        f"https://data.mapbiomas.org/api/access/datafile/{arquivo['id']}",
+        f"mapbiomas-cobertura-{arquivo['id']}.xlsx", 600,
+    )
+    if ano is None:
+        cabecalho = pd.read_excel(io.BytesIO(conteudo), sheet_name="COVERAGE_10.1", nrows=0)
+        ano = max(c for c in cabecalho.columns if isinstance(c, int) and 1985 <= c <= date.today().year)
+    dados = pd.read_excel(
+        io.BytesIO(conteudo), sheet_name="COVERAGE_10.1",
+        usecols=lambda coluna: coluna in {"state_acronym", "municipality", "class_level_0", ano},
+    )
+    natural = dados[(dados["state_acronym"] == "MT") & (dados["class_level_0"] == "Natural")]
+    # A planilha 10.1 contém três linhas limítrofes rotuladas como MT para
+    # municípios de GO/MS. Filtramos pela base IBGE oficial, por igualdade exata.
+    nomes_mt = set(_municipios())
+    natural = natural[natural["municipality"].map(_chave_nome).isin(nomes_mt)]
+    natural = natural.groupby("municipality", as_index=False)[ano].sum().rename(columns={ano: "area_ha"})
+    if len(natural) < 141:  # 2024 antecede Boa Esperança do Norte
+        raise RuntimeError(f"MapBiomas retornou cobertura municipal incompleta: {len(natural)}/141")
+    return date(ano, 12, 31), _por_nome(natural, "municipality", "area_ha")
+
+
 # ---------------------------------------------------------------- utilidades
 def _coluna(df: pd.DataFrame, *pistas: str) -> str:
     for pista in pistas:
@@ -243,6 +400,15 @@ COLETORES = {
         "Estabelecimentos de saúde ativos", fetch_cnes_estabelecimentos,
     ),
     "inep": Coletor("inep", "inep-matriculas.json", "Matrículas na rede pública", fetch_inep),
+    "inep-escolas": Coletor("inep-escolas", "inep-escolas.json", "Escolas ativas", fetch_inep_escolas),
+    "cnes-uti": Coletor("cnes-uti", "cnes-leitos.json", "Leitos de UTI", fetch_cnes_uti),
+    "inpe": Coletor("inpe", "inpe-queimadas.json", "Focos de queimadas", fetch_inpe),
+    "mapbiomas": Coletor("mapbiomas", "mapbiomas-cobertura.json", "Cobertura vegetal nativa", fetch_mapbiomas),
+}
+
+GRUPOS = {
+    "cnes": ["cnes", "cnes-estabelecimentos", "cnes-uti"],
+    "inep": ["inep", "inep-escolas"],
 }
 
 
@@ -271,12 +437,20 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(description="Coleta diária de fontes com download (CNES, INEP).")
     p.add_argument("--fonte", choices=list(COLETORES), help="só uma fonte (padrão: todas)")
+    p.add_argument("--grupo", choices=list(GRUPOS), help="fontes com a mesma periodicidade")
     p.add_argument("--ano", type=int, help="ano do INEP (padrão: ano anterior)")
     args = p.parse_args()
     if args.ano:
         COLETORES["inep"] = Coletor("inep", "inep-matriculas.json", "Matrículas na rede pública",
                                     lambda: fetch_inep(args.ano))
-    sys.exit(1 if rodar([args.fonte] if args.fonte else list(COLETORES)) else 0)
+        COLETORES["inep-escolas"] = Coletor("inep-escolas", "inep-escolas.json", "Escolas ativas",
+                                            lambda: fetch_inep_escolas(args.ano))
+        COLETORES["inpe"] = Coletor("inpe", "inpe-queimadas.json", "Focos de queimadas",
+                                    lambda: fetch_inpe(args.ano))
+        COLETORES["mapbiomas"] = Coletor("mapbiomas", "mapbiomas-cobertura.json", "Cobertura vegetal nativa",
+                                         lambda: fetch_mapbiomas(args.ano))
+    alvos = [args.fonte] if args.fonte else (GRUPOS[args.grupo] if args.grupo else list(COLETORES))
+    sys.exit(1 if rodar(alvos) else 0)
 
 
 if __name__ == "__main__":

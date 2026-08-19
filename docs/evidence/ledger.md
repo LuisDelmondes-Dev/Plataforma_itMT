@@ -1,6 +1,6 @@
 # Evidence Ledger — Programa F0–F7
 
-Atualizado em 15/08/2026. Este ledger registra apenas evidência executada ou
+Atualizado em 19/08/2026. Este ledger registra apenas evidência executada ou
 inspecionada; fixtures e documentação de intenção não são evidência operacional.
 
 ## Execuções verificadas
@@ -81,6 +81,10 @@ um percentual único.
 | EV-20260815-035 | Web | Next.js/TypeScript; 17 páginas | PASS |
 | EV-20260815-036 | F0 | fitness gate de topologia e CI | PASS técnico |
 | EV-20260819-037 | CodeQL hardening | scrypt+pepper, IO sem check-then-use, Bronze restrito e origem de SW; 131/131, build 17 páginas, F0, restore e audits | PASS local; gate remoto pendente no PR 1 |
+| EV-20260819-038 | F1-R047 — Pesquisa/Xingú IA | Build Next.js/TypeScript com 17 páginas; Playwright real validou mouse, teclado, `aria-pressed`, preservação do texto, `/xingu?q=` sem envio automático, retorno por `?rascunho=`, cápsula responsiva, voz e painel `+` limitado a sugestões/pesquisa estruturada/limpeza; capturas `f1-search-modes-*` e `f1-xingu-*` | PASS de software; API externa não necessária para o gate |
+| EV-20260819-039 | F1-R047 — entrada e compositor Xingú | Build Next.js/TypeScript com 17 páginas; Playwright real validou clique na marca da home, transporte do rascunho para `/xingu?q=` sem envio automático, compositor aderente à referência no rodapé, microfone no estado vazio, envio no estado preenchido e responsividade; capturas `f1-xingu-footer-desktop.png` e `f1-xingu-footer-mobile.png` | PASS de software; backend local desligado não afeta o gate de interface |
+| EV-20260819-040 | F2-R048 — sincronização das fontes | Migrações 24–41 aplicadas no banco local; IBGE território/população/PIB/F1/F2, CNES 07/2026, INEP 2025, INPE 2025 e MapBiomas 2024 executados; 142 municípios, 39 fontes, 109 cargas, 79 indicadores e 12.086 observações; segunda execução concorrente bloqueada por advisory lock; execução sem `--force` não consultou fontes válidas; testes de normalização 3/3, agenda 2/2 e regressão 131/131 com 124 eventos de auditoria íntegros | PASS técnico/local; SESP-MT e estradas vicinais `BLOCKED_EXTERNAL`; indicadores seed de vacinação e PIB per capita continuam sem observação e não foram simulados |
+| EV-20260819-041 | F2-R048 — snapshots SQL oficiais | Migrações `42`–`45` versionam 7 cargas novas: CNES 07/2026 (299 observações), INPE 2025 (142), MapBiomas 2024 (141) e INEP 2025 (284), total 866; aplicação limpa das 45 migrações em `itmt_test`; regressão 131/131 e cadeia íntegra com 131 eventos; teste da Xingú passou a conferir dinamicamente o número mais recente vindo do motor | PASS técnico/local; snapshots usam chaves naturais e `ON CONFLICT`, sem usuários, tokens, auditoria privada ou caminhos locais |
 
 O quadro “Baseline por fase” é histórico e anterior a EV-024–EV-036. O estado
 corrente está em `docs/programa/EXECUCAO_COMPLETA_F0_F7.md`.

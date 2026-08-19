@@ -2,7 +2,7 @@
   "fonte": {
     "nome": "INPE — Programa Queimadas (focos de calor)",
     "origem": "Instituto Nacional de Pesquisas Espaciais",
-    "url": "https://terrabrasilis.dpi.inpe.br/queimadas/portal/dados-abertos/",
+    "url": "https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/anual/Brasil_sat_ref/",
     "baseLegal": "DADO_ABERTO",
     "licenca": "Dados abertos INPE (CC-BY-SA)",
     "periodicidade": "ANUAL"

@@ -23,7 +23,7 @@ Evidências abreviadas:
 - `E-F1-AUTH`: `db/11-auth.sql`, `api/src/auth/*`, `api/test/parceiros.e2e.mjs`
 - `E-F1-X`: `api/src/xingu/*`, `api/test/xingu.e2e.mjs`, `web/app/xingu/page.tsx`, `api/golden/golden-set.json`
 - `E-F1-PORTAL`: `api/src/{territorio,indicadores,transparencia}/*`, `web/app/{consulta,mapa,municipio,transparencia}/**`, `api/test/e2e.mjs`
-- `E-F2-PIPE`: `api/scripts/{lib-ingest,refrescar-fontes,alerta-fontes,ingestar-pacote-f2-ibge,auditar-f2}.mjs`, `api/ingest-configs/*`
+- `E-F2-PIPE`: `db/41-f2-sincronizacao-fontes.sql`, `api/scripts/{lib-ingest,sincronizar-fontes,fontes-registry,refrescar-fontes,alerta-fontes,ingestar-pacote-f2-ibge,auditar-f2}.mjs`, `coletores/coletar_fontes.py`, `api/ingest-configs/*`
 - `E-F2-DOC`: `db/{21-f2-documentos-rag,22-f2-seguranca-vetores}.sql`, `api/src/documentos/*`, `api/test/documentos.e2e.mjs`
 - `E-F2-EVAL`: `api/scripts/avaliar-corpus-documental-f2.mjs`, `api/test/f2-gates.unit.mjs`, `docs/operacao/GATE_F2.md`
 - `E-F2-API`: `db/23-f2-api-parceiros.sql`, `api/src/parceiros/*`, `api/src/interoperabilidade/*`, `api/test/{integracoes,interoperabilidade}.e2e.mjs`
@@ -112,6 +112,7 @@ Evidências abreviadas:
 | F1-R044 | Exibir qualidade | DATA/SOFTWARE | F1-R033 | VALIDATED | chips/régua/API | G1 |
 | F1-R045 | Exibir cobertura | DATA/GIS/SOFTWARE | F1-R018 | VALIDATED | `/cobertura`,consulta,E2E | G1 |
 | F1-R046 | WCAG AA | SOFTWARE/ACCESSIBILITY | F1-R025–F1-R032 | IMPLEMENTED_NOT_VALIDATED | recursos implementados; auditoria formal ausente | G1-WCAG |
+| F1-R047 | Alternar Pesquisa e Xingú IA sem execução acidental | SOFTWARE/AI/ACCESSIBILITY | F1-R025,F1-R046 | VALIDATED | `PesquisaPrincipal`, `SeletorModoPesquisa`, `/consulta?rascunho=`, `/xingu?q=`; EV-20260819-038, EV-20260819-039 | G1-WCAG |
 
 ## F2 — Plataforma de dados
 
@@ -164,6 +165,7 @@ Evidências abreviadas:
 | F2-R045 | RAG eval: faithfulness | AI/DATA | F2-R016 | BLOCKED_EXTERNAL | cálculo e ataque de alucinação validados; corpus real homologado pendente | G2-RAG |
 | F2-R046 | RAG eval: groundedness | AI/DATA | F2-R016 | BLOCKED_EXTERNAL | cálculo e contexto sem suporte validados; corpus real homologado pendente | G2-RAG |
 | F2-R047 | RAG eval: citation correctness | AI/DATA | F2-R016 | BLOCKED_EXTERNAL | cálculo e citação incorreta validados; corpus real homologado pendente | G2-RAG |
+| F2-R048 | Sincronização incremental das fontes oficiais | DATA/OPERATIONAL | F2-R002–F2-R007 | VALIDATED | `docs/requirements/F2-R048-SINCRONIZACAO-FONTES.md`, E-F2-PIPE, EV-20260819-040 | G2-PIPE |
 
 ## F3 — Inteligência e pilotos
 
@@ -211,9 +213,9 @@ Evidências abreviadas:
 | Fase | Requisitos | VALIDATED | IMPLEMENTED_NOT_VALIDATED | PARTIAL | NOT_STARTED | BLOCKED_EXTERNAL | Gate baseline |
 |---|---:|---:|---:|---:|---:|---:|---|
 | F0 | 26 | 10 | 9 | 5 | 0 | 2 | Não aprovado |
-| F1 | 46 | 15 | 19 | 8 | 1 | 3 | Não aprovado |
-| F2 | 47 | 19 | 7 | 11 | 2 | 8 | Técnico parcial / operacional bloqueado |
+| F1 | 47 | 16 | 19 | 8 | 1 | 3 | Não aprovado |
+| F2 | 48 | 20 | 7 | 11 | 2 | 8 | Técnico parcial / operacional bloqueado |
 | F3 | 36 | 5 | 4 | 18 | 4 | 5 | Não aprovado / campo bloqueado |
-| **Total** | **155** | **49** | **39** | **42** | **7** | **18** | — |
+| **Total** | **157** | **51** | **39** | **42** | **7** | **18** | — |
 
 O primeiro requisito bloqueante da primeira fase não aprovada é `F0-R003` — ADRs das decisões relevantes. Em seguida estão os aceites formais de arquitetura, catálogo e evidências e as dependências externas `F0-R024` e `F0-R026`.

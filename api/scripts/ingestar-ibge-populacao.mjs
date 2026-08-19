@@ -15,7 +15,7 @@ import {
   pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar, quarentenar,
 } from './lib-ingest.mjs';
 
-const ano = /^\d{4}$/.test(process.argv[2] ?? '') ? process.argv[2] : '2024';
+const ano = /^\d{4}$/.test(process.argv[2] ?? '') ? process.argv[2] : '2025';
 const URL = `https://servicodados.ibge.gov.br/api/v3/agregados/6579/periodos/${ano}/variaveis/9324?localidades=N6[N3[51]]`;
 
 const db = pool();

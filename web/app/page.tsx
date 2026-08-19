@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { REGIAO } from '@/lib/regiao';
+import { PesquisaPrincipal } from '@/components/PesquisaPrincipal';
 
 export default function Home() {
   return (
@@ -18,21 +19,7 @@ export default function Home() {
         Inteligência Territorial de {REGIAO.nome}
       </h1>
 
-      <form
-        action="/consulta"
-        style={{ display: 'flex', gap: 8, marginTop: 24, justifyContent: 'center', flexWrap: 'wrap' }}
-      >
-        <input
-          className="campo"
-          style={{ maxWidth: 420, flex: '1 1 260px' }}
-          name="q"
-          placeholder="Indique o local de sua pesquisa"
-          aria-label="Indique o local de sua pesquisa"
-        />
-        <button className="btn primaria" type="submit">
-          Consultar
-        </button>
-      </form>
+      <PesquisaPrincipal />
 
       <div
         style={{
