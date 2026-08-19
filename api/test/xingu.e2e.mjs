@@ -21,6 +21,25 @@ const perguntar = async (pergunta, extra = {}) => {
   return r.json();
 };
 
+const valorMaisRecente = async (indicadorId, codigoIbge) => {
+  const cliente = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await cliente.connect();
+  try {
+    const { rows } = await cliente.query(
+      `SELECT "Observacao_Valor"::text AS valor
+         FROM "Observacao"
+        WHERE "Observacao_IndicadorId"=$1 AND "Observacao_CodigoIbge"=$2
+        ORDER BY "Observacao_DataReferencia" DESC
+        LIMIT 1`,
+      [indicadorId, codigoIbge],
+    );
+    assert.equal(rows.length, 1, 'o motor precisa ter uma observação oficial para o recorte');
+    return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 6 }).format(Number(rows[0].valor));
+  } finally {
+    await cliente.end();
+  }
+};
+
 before(async () => {
   api = spawn('node', ['dist/main.js'], {
     // XINGU_PROVEDOR=lexico fixa o intérprete determinístico: a F2 é testada
@@ -43,7 +62,7 @@ test('RF-CHAT-003/004: plano exibido e número vindo do motor, com citações (R
     { recorte: d.plano.recorte, codigo: d.plano.codigo, indicador_id: d.plano.indicador_id },
     { recorte: 'MUNICIPIO', codigo: '5103403', indicador_id: 1 },
   );
-  assert.match(d.resposta, /612/);
+  assert.ok(d.resposta.includes(await valorMaisRecente(d.plano.indicador_id, d.plano.codigo)));
   assert.ok(d.citacoes.length > 0 && d.citacoes[0].hash.length === 64);
   assert.ok(d.followups.length > 0);
 });
@@ -94,7 +113,7 @@ test('RF-CHAT-010: contexto de sessão resolve "e em Sinop?"', async () => {
   const d = await perguntar('e em Sinop?', { contexto: { indicador_id: 1 } });
   assert.equal(d.estado, 'RESPONDIDA');
   assert.match(d.resposta, /Sinop/);
-  assert.match(d.resposta, /96/);
+  assert.ok(d.resposta.includes(await valorMaisRecente(d.plano.indicador_id, d.plano.codigo)));
 });
 
 test('RF-CHAT-012: segundo disparo idêntico usa cache de plano', async () => {

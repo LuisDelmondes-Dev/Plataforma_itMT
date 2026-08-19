@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { REGIAO } from '@/lib/regiao';
+import { ModoPesquisa, SeletorModoPesquisa } from '@/components/SeletorModoPesquisa';
 
 interface Citacao {
   fonte: string;
@@ -39,16 +41,43 @@ interface Mensagem { papel: 'usuario' | 'xingu'; texto: string; dados?: Resposta
  * Speech API (pt-BR) e TTS opcional via speechSynthesis.
  */
 export default function Xingu() {
+  return (
+    <Suspense fallback={<div className="skeleton" style={{ height: 320 }} />}>
+      <XinguConteudo />
+    </Suspense>
+  );
+}
+
+function XinguConteudo() {
+  const router = useRouter();
+  const params = useSearchParams();
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [texto, setTexto] = useState('');
   const [ocupada, setOcupada] = useState(false);
   const [falar, setFalar] = useState(false);
   const [ouvindo, setOuvindo] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
   const contexto = useRef<Resposta['contexto']>(undefined);
   const fim = useRef<HTMLDivElement>(null);
   const [situacao, setSituacao] = useState<Situacao | null>(null);
+  const consultaInicialAplicada = useRef(false);
+  const pQ = params.get('q');
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: 'smooth' }); }, [mensagens]);
+
+  useEffect(() => {
+    const fechar = (event: KeyboardEvent) => event.key === 'Escape' && setMenuAberto(false);
+    window.addEventListener('keydown', fechar);
+    return () => window.removeEventListener('keydown', fechar);
+  }, []);
+
+  // /xingu?q= transporta a intenção sem executar a IA. A pessoa ainda precisa
+  // confirmar no compositor, evitando chamadas acidentais ao apenas trocar o modo.
+  useEffect(() => {
+    if (consultaInicialAplicada.current || !pQ) return;
+    consultaInicialAplicada.current = true;
+    setTexto(pQ);
+  }, [pQ]);
 
   // RG-05: mostra ao usuário se a IA de linguagem livre está ativa ou se o
   // portal está no modo léxico determinístico (ex.: provedores sem crédito).
@@ -114,8 +143,35 @@ export default function Xingu() {
     rec.start();
   }
 
+  function mudarModo(modo: ModoPesquisa) {
+    if (modo === 'xingu') return;
+    const ultimaPergunta = [...mensagens].reverse().find((mensagem) => mensagem.papel === 'usuario');
+    const rascunho = texto.trim() || ultimaPergunta?.texto || '';
+    router.push(rascunho ? `/consulta?rascunho=${encodeURIComponent(rascunho)}` : '/consulta');
+  }
+
+  function usarSugestao(sugestao: string) {
+    setTexto(sugestao);
+    setMenuAberto(false);
+  }
+
+  function limparConversa() {
+    setMensagens([]);
+    setTexto('');
+    contexto.current = undefined;
+    window.speechSynthesis?.cancel();
+    setMenuAberto(false);
+  }
+
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <section className="modo-pesquisa-contextual" aria-label="Modo da pesquisa atual">
+        <div>
+          <div className="overline">Experiência de consulta</div>
+          <p>Use linguagem natural sem perder o acesso à pesquisa estruturada.</p>
+        </div>
+        <SeletorModoPesquisa ativo="xingu" onChange={mudarModo} compacto />
+      </section>
       <div className="overline">IA Xingú</div>
       <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
         Pergunte aos dados de {REGIAO.nome}
@@ -241,24 +297,50 @@ export default function Xingu() {
 
       <form
         onSubmit={(e) => { e.preventDefault(); perguntar(texto); }}
-        style={{ display: 'flex', gap: 8, position: 'sticky', bottom: 16 }}
+        className="xingu-compositor"
       >
-        <input
-          className="campo"
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder="Pergunte em linguagem natural…"
-          aria-label="Pergunta para a IA Xingú"
-        />
-        <button type="button" className="btn" onClick={ouvir} aria-pressed={ouvindo} aria-label="Perguntar por voz">
-          {ouvindo ? '● Ouvindo' : '🎙 Voz'}
-        </button>
-        <button type="button" className="btn" onClick={() => setFalar(!falar)} aria-pressed={falar} aria-label="Ler respostas em voz alta">
-          {falar ? '🔊 TTS on' : '🔇 TTS'}
-        </button>
-        <button type="submit" className="btn primaria" disabled={ocupada || !texto.trim()}>
-          Perguntar
-        </button>
+        <div className="barra-xingu-compositor">
+          <textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                perguntar(texto);
+              }
+            }}
+            rows={2}
+            placeholder="Pergunte o que quiser"
+            aria-label="Pergunta para a itMT"
+          />
+          <div className="barra-xingu-acoes">
+            <div className="barra-xingu-mais">
+              <button type="button" className="barra-xingu-icone barra-xingu-adicionar" aria-label="Adicionar contexto" aria-expanded={menuAberto} aria-controls="menu-xingu-chat" onClick={() => setMenuAberto(!menuAberto)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              </button>
+              {menuAberto && (
+                <div className="barra-xingu-menu" id="menu-xingu-chat">
+                  <span>Adicionar à conversa</span>
+                  {['Qual a população de Mato Grosso?', 'Quantos leitos de UTI existem em Cuiabá?', 'Cobertura vacinal no consórcio Teles Pires'].map((sugestao) => (
+                    <button type="button" key={sugestao} onClick={() => usarSugestao(sugestao)}>{sugestao}</button>
+                  ))}
+                  <button type="button" onClick={() => setFalar(!falar)}>{falar ? 'Desativar leitura das respostas' : 'Ler respostas em voz alta'}</button>
+                  <button type="button" onClick={() => mudarModo('pesquisa')}>Abrir pesquisa estruturada</button>
+                  {mensagens.length > 0 && <button type="button" className="perigo" onClick={limparConversa}>Limpar conversa</button>}
+                </div>
+              )}
+            </div>
+            {texto.trim() ? (
+              <button type="submit" className="barra-xingu-icone barra-xingu-enviar" disabled={ocupada} aria-label="Enviar pergunta">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" /></svg>
+              </button>
+            ) : (
+              <button type="button" className={`barra-xingu-icone${ouvindo ? ' ativo' : ''}`} onClick={ouvir} aria-pressed={ouvindo} aria-label="Perguntar por voz">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" /></svg>
+              </button>
+            )}
+          </div>
+        </div>
       </form>
     </div>
   );

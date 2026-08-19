@@ -1,12 +1,13 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiGet, Resultado } from '@/lib/api';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { Sparkline } from '@/components/Sparkline';
 import { REGIAO } from '@/lib/regiao';
+import { ModoPesquisa, SeletorModoPesquisa } from '@/components/SeletorModoPesquisa';
 
 interface Municipio {
   codigo_ibge: string;
@@ -77,6 +78,7 @@ function Consulta() {
   const [carregando, setCarregando] = useState(false);
   const [livres, setLivres] = useState<string[]>([]); // até 4 municípios (§15.7)
   const [indicadorAtual, setIndicadorAtual] = useState<Indicador | null>(null);
+  const rascunhoInicialAplicado = useRef(false);
 
   useEffect(() => {
     apiGet<Municipio[]>('/municipios').then(setMunicipios).catch(() => setMunicipios([]));
@@ -110,6 +112,7 @@ function Consulta() {
   // tolerante a acento do servidor (RF-PORTAL-001). O permalink (?municipio)
   // tem precedência; por isso só roda quando não há município no link.
   const pQ = params.get('q');
+  const pRascunho = params.get('rascunho');
   useEffect(() => {
     if (!pQ || pMun || local) return;
     setBusca(pQ);
@@ -119,6 +122,15 @@ function Consulta() {
       })
       .catch(() => {});
   }, [pQ, pMun]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A troca Xingú → Pesquisa preserva o texto como rascunho, mas não executa
+  // a resolução tolerante do ?q=. A pessoa confirma escolhendo o município.
+  useEffect(() => {
+    if (rascunhoInicialAplicado.current || !pRascunho) return;
+    rascunhoInicialAplicado.current = true;
+    if (pQ || pMun || local || busca) return;
+    setBusca(pRascunho);
+  }, [pRascunho, pQ, pMun, local, busca]);
 
   // Permalink estável e compartilhável para a combinação atual
   function atualizarUrl(l: Municipio | null, t: Tema | null, st: Subtema | null) {
@@ -226,8 +238,22 @@ function Consulta() {
       )
     : municipios;
 
+  function mudarModo(modo: ModoPesquisa) {
+    if (modo === 'pesquisa') return;
+    const rascunho = busca.trim() || local?.nome || pQ || '';
+    router.push(rascunho ? `/xingu?q=${encodeURIComponent(rascunho)}` : '/xingu');
+  }
+
   return (
-    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <>
+      <section className="modo-pesquisa-contextual" aria-label="Modo da pesquisa atual">
+        <div>
+          <div className="overline">Experiência de consulta</div>
+          <p>Escolha entre a pesquisa estruturada e a interpretação em linguagem natural.</p>
+        </div>
+        <SeletorModoPesquisa ativo="pesquisa" onChange={mudarModo} compacto />
+      </section>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       {/* Rail de consulta (§15.6) */}
       <aside className="rail" aria-label="Consulta em três passos">
         <div className="overline" style={{ marginBottom: 12 }}>
@@ -495,6 +521,7 @@ function Consulta() {
           </>
         )}
       </section>
-    </div>
+      </div>
+    </>
   );
 }

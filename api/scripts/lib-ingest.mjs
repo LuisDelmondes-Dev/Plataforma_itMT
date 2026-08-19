@@ -202,7 +202,10 @@ export async function auditar(db, ator, acao, entidade, entidadeId, payload) {
 /** Busca HTTP com timeout — usada apenas no modo ao vivo. */
 export async function baixar(url) {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), 30000);
+  // Consultas municipais do SIDRA podem levar mais de 30 s sem estarem
+  // travadas. O limite continua finito e configurável pela operação.
+  const limite = Number(process.env.INGEST_HTTP_TIMEOUT_MS ?? 120000);
+  const t = setTimeout(() => ctl.abort(), limite);
   try {
     const r = await fetch(url, { signal: ctl.signal, headers: { accept: 'application/json' } });
     if (!r.ok) throw new Error(`HTTP ${r.status} em ${url}`);
