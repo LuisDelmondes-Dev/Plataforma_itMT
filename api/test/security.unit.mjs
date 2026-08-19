@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
 import { AdminGuard } from '../dist/admin/admin.controller.js';
 import { AuthService } from '../dist/auth/auth.service.js';
 import { InteroperabilidadeController } from '../dist/interoperabilidade/interoperabilidade.controller.js';
@@ -65,4 +67,28 @@ test('métricas exigem token dedicado em produção', async () => {
     if (anteriorToken === undefined) delete process.env.METRICS_TOKEN;
     else process.env.METRICS_TOKEN = anteriorToken;
   }
+});
+
+test('service worker ignora PURGE_PRIVATE de origem externa', async () => {
+  const codigo = await readFile('../web/public/sw.js', 'utf8');
+  const listeners = new Map();
+  const caches = {
+    open: async () => ({ keys: async () => [], delete: async () => true }),
+    keys: async () => [],
+    match: async () => undefined,
+  };
+  const self = {
+    location: { origin: 'https://itmt.mt.gov.br' },
+    clients: { claim: async () => undefined },
+    skipWaiting() {},
+    addEventListener(tipo, handler) { listeners.set(tipo, handler); },
+  };
+  runInNewContext(codigo, { self, caches, URL, fetch: async () => ({ ok: true, clone() { return this; } }) });
+
+  let aguardas = 0;
+  const mensagem = listeners.get('message');
+  mensagem({ origin: 'https://malicioso.example', data: { type: 'PURGE_PRIVATE' }, waitUntil() { aguardas++; } });
+  assert.equal(aguardas, 0);
+  mensagem({ origin: self.location.origin, data: { type: 'PURGE_PRIVATE' }, waitUntil() { aguardas++; } });
+  assert.equal(aguardas, 1);
 });

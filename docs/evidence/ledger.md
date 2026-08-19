@@ -80,6 +80,7 @@ um percentual único.
 | EV-20260815-034 | Regressão | 40 migrações; 129/129; auditoria íntegra com 124 eventos | PASS |
 | EV-20260815-035 | Web | Next.js/TypeScript; 17 páginas | PASS |
 | EV-20260815-036 | F0 | fitness gate de topologia e CI | PASS técnico |
+| EV-20260819-037 | CodeQL hardening | scrypt+pepper, IO sem check-then-use, Bronze restrito e origem de SW; 131/131, build 17 páginas, F0, restore e audits | PASS local; gate remoto pendente no PR 1 |
 
 O quadro “Baseline por fase” é histórico e anterior a EV-024–EV-036. O estado
 corrente está em `docs/programa/EXECUCAO_COMPLETA_F0_F7.md`.

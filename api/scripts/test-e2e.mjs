@@ -13,6 +13,7 @@ const SUITES_PADRAO = [
   'test/interoperabilidade.e2e.mjs',
   'test/f2-gates.unit.mjs',
   'test/refrescar-fontes.unit.mjs',
+  'test/lib-ingest.unit.mjs',
   'test/xingu-provedores.unit.mjs',
   'test/agent-executor.unit.mjs',
   'test/multitenancy.e2e.mjs',

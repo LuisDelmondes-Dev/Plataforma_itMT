@@ -16,7 +16,7 @@ Atualizado em 15/08/2026. Este documento é a fonte executiva para “o que foi 
 ## Resultado técnico final
 
 - `40/40` migrações aplicadas em banco novo;
-- `129/129` testes aprovados;
+- `131/131` testes aprovados;
 - cadeia de auditoria íntegra com `124` eventos no encerramento da suíte;
 - API NestJS 11 compilada;
 - Web Next.js 16 compilado, TypeScript aprovado e `17` páginas geradas;

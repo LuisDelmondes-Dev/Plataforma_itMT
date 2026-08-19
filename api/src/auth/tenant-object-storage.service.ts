@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { mkdir, lstat, open, readFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { mkdir, open } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { TenantContext } from '../database/database.service';
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -33,6 +34,8 @@ export class TenantObjectStorageService {
   }
 
   criarChave(contexto: TenantContext, tipo: string, objectId: string, extensao = 'bin') {
+    if (typeof tipo !== 'string' || typeof objectId !== 'string' || typeof extensao !== 'string')
+      throw new Error('Parâmetros de storage devem ser strings.');
     if (!UUID.test(contexto.tenantId) || !UUID.test(contexto.organizationId) || !UUID.test(objectId))
       throw new Error('Identificador de storage inválido.');
     if (!/^[a-z][a-z0-9-]{1,39}$/.test(tipo) || !/^[a-z0-9]{1,10}$/.test(extensao))
@@ -40,13 +43,14 @@ export class TenantObjectStorageService {
     return `tenants/${contexto.tenantId}/organizations/${contexto.organizationId}/${tipo}/${objectId}.${extensao}`;
   }
 
-  private validarChave(contexto: TenantContext, chave: string) {
+  private validarChave(contexto: TenantContext, chave: unknown): asserts chave is string {
+    if (typeof chave !== 'string') throw new Error('Chave de storage inválida.');
     const prefixo = `tenants/${contexto.tenantId}/organizations/${contexto.organizationId}/`;
     if (!chave.startsWith(prefixo) || chave.includes('..') || chave.includes('\\'))
       throw new Error('Objeto fora do namespace tenant.');
   }
 
-  private caminho(contexto: TenantContext, chave: string) {
+  private caminho(contexto: TenantContext, chave: unknown) {
     this.validarChave(contexto, chave);
     const raiz = resolve(this.root);
     const alvo = resolve(this.root, ...chave.split('/'));
@@ -56,6 +60,7 @@ export class TenantObjectStorageService {
 
   async gravar(contexto: TenantContext, chave: string, dados: Buffer) {
     this.validarChave(contexto, chave);
+    if (!Buffer.isBuffer(dados)) throw new Error('Conteúdo de storage inválido.');
     const sha256 = createHash('sha256').update(dados).digest('hex');
     if (this.driver === 's3') {
       await this.s3!.send(new PutObjectCommand({
@@ -69,10 +74,12 @@ export class TenantObjectStorageService {
     }
     const alvo = this.caminho(contexto, chave);
     await mkdir(dirname(alvo), { recursive: true });
-    const diretorio = await lstat(dirname(alvo));
-    if (diretorio.isSymbolicLink()) throw new Error('Diretório simbólico não permitido.');
-    const arquivo = await open(alvo, 'wx', 0o600);
-    try { await arquivo.writeFile(dados); } finally { await arquivo.close(); }
+    const semLink = constants.O_NOFOLLOW ?? 0;
+    const arquivo = await open(alvo, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | semLink, 0o600);
+    try {
+      await arquivo.writeFile(dados);
+      await arquivo.sync();
+    } finally { await arquivo.close(); }
     return { chave, bytes: dados.byteLength, sha256 };
   }
 
@@ -84,9 +91,13 @@ export class TenantObjectStorageService {
       return Buffer.from(await resposta.Body.transformToByteArray());
     }
     const alvo = this.caminho(contexto, chave);
-    const info = await lstat(alvo);
-    if (!info.isFile() || info.isSymbolicLink()) throw new Error('Objeto inválido.');
-    return readFile(alvo);
+    const semLink = constants.O_NOFOLLOW ?? 0;
+    const arquivo = await open(alvo, constants.O_RDONLY | semLink);
+    try {
+      const info = await arquivo.stat();
+      if (!info.isFile()) throw new Error('Objeto inválido.');
+      return await arquivo.readFile();
+    } finally { await arquivo.close(); }
   }
 
   async urlAssinada(contexto: TenantContext, chave: string, ttlSegundos = 300) {

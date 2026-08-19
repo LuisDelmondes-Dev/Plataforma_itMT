@@ -5,8 +5,8 @@
 // RF-INGEST-009 (linhagem) e RG-10 (auditoria encadeada).
 // ============================================================
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, constants, mkdirSync, openSync, writeFileSync, readFileSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import pg from 'pg';
 
 export function pool() {
@@ -55,12 +55,31 @@ export async function registrarFonte(db, { nome, origem, url, baseLegal, licenca
  * aqui, diretório local ./bronze.
  */
 export function salvarBronze(nomeArquivo, conteudo) {
-  const dir = process.env.BRONZE_DIR ?? join(process.cwd(), 'bronze');
+  if (typeof nomeArquivo !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,199}$/i.test(nomeArquivo))
+    throw new Error('RF-INGEST-002: nome de arquivo Bronze inválido.');
+  if (typeof conteudo !== 'string' && !Buffer.isBuffer(conteudo))
+    throw new Error('RF-INGEST-002: conteúdo Bronze deve ser texto ou Buffer.');
+  const payload = Buffer.isBuffer(conteudo) ? conteudo : Buffer.from(conteudo, 'utf8');
+  const limite = Number(process.env.BRONZE_MAX_BYTES ?? 268_435_456);
+  if (!Number.isSafeInteger(limite) || limite < 1 || payload.byteLength > limite)
+    throw new Error(`RF-INGEST-002: conteúdo Bronze excede o limite de ${limite} bytes.`);
+
+  const dir = resolve(process.env.BRONZE_DIR ?? resolve(process.cwd(), 'bronze'));
   mkdirSync(dir, { recursive: true });
-  const caminho = join(dir, nomeArquivo);
-  const hash = sha256(conteudo);
-  if (existsSync(caminho)) {
-    const existente = readFileSync(caminho);
+  const caminho = resolve(dir, nomeArquivo);
+  if (!caminho.startsWith(`${dir}${sep}`))
+    throw new Error('RF-INGEST-002: destino Bronze fora do diretório permitido.');
+  const hash = sha256(payload);
+  let descritor;
+  try {
+    descritor = openSync(caminho, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    writeFileSync(descritor, payload);
+    return { caminho, hash };
+  } catch (erro) {
+    if (erro?.code !== 'EEXIST') throw erro;
+    const leitura = openSync(caminho, constants.O_RDONLY);
+    let existente;
+    try { existente = readFileSync(leitura); } finally { closeSync(leitura); }
     const hashExistente = sha256(existente);
     if (hashExistente !== hash) {
       throw new Error(
@@ -69,9 +88,9 @@ export function salvarBronze(nomeArquivo, conteudo) {
       );
     }
     return { caminho, hash };
+  } finally {
+    if (descritor !== undefined) closeSync(descritor);
   }
-  writeFileSync(caminho, conteudo, { flag: 'wx' });
-  return { caminho, hash };
 }
 
 export function lerBronze(caminho) {

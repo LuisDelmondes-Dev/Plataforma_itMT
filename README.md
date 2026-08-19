@@ -428,7 +428,7 @@ ciência aberta/DCAT, object storage S3, continuidade e observabilidade.
 
 ```bash
 cd api
-npm test                  # 40 migrações + 129 testes + cadeia de auditoria
+npm test                  # 40 migrações + 131 testes + cadeia de auditoria
 npm run test:restore      # prova destrutiva somente em bancos *_test
 npm audit --omit=dev --audit-level=moderate
 

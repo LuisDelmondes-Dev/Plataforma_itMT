@@ -28,6 +28,7 @@ const env = {
   ITMT_APP_SENHA: 'gate-app-password-123456789012',
   ADMIN_TOKEN: 'gate-admin-token-123456789012',
   SESSION_SECRET: 'gate-session-secret-123456789012345678901234',
+  API_KEY_PEPPER: 'gate-api-key-pepper-123456789012345678901234',
   ADMIN_SENHA_INICIAL: 'gate-initial-admin-password',
   CORS_ORIGEM: 'https://itmt.example.gov.br',
   METRICS_TOKEN: 'gate-metrics-token-12345678901234567890',

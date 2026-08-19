@@ -4,8 +4,10 @@
 
 Capacidade em **protótipo validado localmente**. O portal `/integracoes` permite que
 parceiros, universidades e administradores criem e revoguem credenciais próprias para a
-API versionada. O segredo é exibido uma única vez; o banco armazena somente SHA-256 e um
-prefixo não secreto para identificação.
+API versionada. O segredo é exibido uma única vez; o banco armazena somente uma derivação
+scrypt com `API_KEY_PEPPER` e um prefixo não secreto para identificação. Produção exige
+pepper com pelo menos 32 caracteres; sua rotação invalida as chaves e requer reemissão
+coordenada das credenciais.
 
 Este estado não representa API comercial homologada. Ainda faltam contrato OpenAPI
 publicado, SLA, processo formal de onboarding, alertas e política automatizada de retenção
@@ -66,4 +68,3 @@ curl https://SEU_DOMINIO/v1/integracoes/temas \
 - escopo insuficiente é bloqueado antes da consulta de domínio;
 - credencial revogada deixa de funcionar imediatamente;
 - cadeia de auditoria permanece íntegra.
-

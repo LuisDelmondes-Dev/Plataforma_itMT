@@ -1,6 +1,6 @@
 -- ============================================================
 -- 23-f2-api-parceiros.sql — credenciais de integração e quotas F2.
--- A chave secreta nunca é persistida: somente SHA-256 + prefixo exibível.
+-- A chave secreta nunca é persistida: somente derivação scrypt com pepper + prefixo exibível.
 -- O consumo agregado por minuto/dia permite cobrança de quota atômica.
 -- ============================================================
 
@@ -44,4 +44,3 @@ CREATE INDEX IF NOT EXISTS idx_api_consumo_janela_recente
 
 GRANT SELECT, INSERT, UPDATE ON "ApiCliente", "ApiConsumoJanela" TO itmt_app;
 GRANT USAGE, SELECT ON SEQUENCE "ApiCliente_ApiCliente_Id_seq" TO itmt_app;
-

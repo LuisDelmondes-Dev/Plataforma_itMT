@@ -35,6 +35,8 @@ function validarConfiguracaoProducao() {
   const senhaInicial = process.env.ADMIN_SENHA_INICIAL ?? '';
   if (senhaInicial.length < 16)
     erros.push('ADMIN_SENHA_INICIAL ausente ou curta demais (mínimo 16 caracteres).');
+  if ((process.env.API_KEY_PEPPER ?? '').length < 32)
+    erros.push('API_KEY_PEPPER ausente ou curto demais (mínimo 32 caracteres).');
   if (process.env.OBJECT_STORAGE_DRIVER !== 's3')
     erros.push('OBJECT_STORAGE_DRIVER deve ser s3 em produção (volume local não é custódia durável).');
   if (!process.env.OBJECT_STORAGE_BUCKET)

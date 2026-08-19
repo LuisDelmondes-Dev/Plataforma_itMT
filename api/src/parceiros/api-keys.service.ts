@@ -2,12 +2,15 @@ import {
   BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable,
   NotFoundException, UnauthorizedException,
 } from '@nestjs/common';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import { promisify } from 'node:util';
 import { DatabaseService, TenantContext } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 
 export const ESCOPOS_API = ['catalogo:ler', 'indicadores:ler'] as const;
 export type EscopoApi = typeof ESCOPOS_API[number];
+
+const scrypt = promisify(scryptCallback);
 
 export interface ApiClienteAutenticado {
   id: string;
@@ -25,8 +28,12 @@ export interface ApiClienteAutenticado {
 export class ApiKeysService {
   constructor(private readonly db: DatabaseService, private readonly trilha: AuditoriaService) {}
 
-  private hash(chave: string) {
-    return createHash('sha256').update(chave, 'utf8').digest('hex');
+  private async hash(chave: string) {
+    const pepper = process.env.API_KEY_PEPPER
+      ?? (process.env.NODE_ENV === 'production' ? '' : 'itmt-api-key-pepper-apenas-desenvolvimento');
+    if (pepper.length < 32) throw new Error('API_KEY_PEPPER ausente ou curto demais.');
+    const derivada = await scrypt(chave, pepper, 32) as Buffer;
+    return derivada.toString('hex');
   }
 
   async criar(
@@ -57,13 +64,14 @@ export class ApiKeysService {
 
     const prefixo = randomBytes(6).toString('hex');
     const chave = `itmt_live_${prefixo}_${randomBytes(32).toString('base64url')}`;
+    const hashChave = await this.hash(chave);
     const r = await this.db.withTenantTransaction(contexto, () => this.db.query<{ id: string; criada_em: string }>(
       `INSERT INTO "ApiCliente"
         ("ApiCliente_Proprietario","ApiCliente_Nome","ApiCliente_Prefixo","ApiCliente_HashChave",
          "ApiCliente_Escopos","ApiCliente_QuotaMinuto","ApiCliente_QuotaDia","ApiCliente_ExpiraEm")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING "ApiCliente_Id"::text AS id, "ApiCliente_CriadaEm"::text AS criada_em`,
-      [proprietario, nome, prefixo, this.hash(chave), escopos, quotaMinuto, quotaDia, expiraEm],
+      [proprietario, nome, prefixo, hashChave, escopos, quotaMinuto, quotaDia, expiraEm],
     ));
     await this.trilha.registrar(proprietario, 'CRIACAO_CHAVE_API', 'ApiCliente', r.rows[0].id, {
       nome, prefixo, escopos, quota_minuto: quotaMinuto, quota_dia: quotaDia, expira_em: expiraEm,
@@ -111,7 +119,7 @@ export class ApiKeysService {
 
   async consumir(chave: string, escoposExigidos: string[]): Promise<ApiClienteAutenticado> {
     if (!chave || chave.length > 160) throw new UnauthorizedException('Chave de API ausente ou inválida.');
-    const hash = this.hash(chave);
+    const hash = await this.hash(chave);
     const envelope = await this.db.query<{ cliente_id: string; tenant_id: string; organizacao_id: string }>(
       `SELECT cliente_id::text,tenant_id::text,organizacao_id::text FROM "ResolverApiClientePorHash"($1)`, [hash],
     );

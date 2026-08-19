@@ -32,6 +32,9 @@ test('storage usa prefixo canônico, preserva hash e nega Tenant A→B/traversal
     assert.equal((await storage.ler(A, chave)).toString(), 'conteúdo A');
     await assert.rejects(() => storage.ler(B, chave), /fora do namespace tenant/i);
     await assert.rejects(() => storage.ler(A, `${chave}/../../segredo`), /namespace|caminho/i);
+    await assert.rejects(() => storage.ler(A, [chave]), /chave de storage inválida/i);
+    assert.throws(() => storage.criarChave(A, ['documentos'], OBJETO, 'txt'), /devem ser strings/i);
+    await assert.rejects(() => storage.gravar(A, chave, 'não-binário'), /conteúdo de storage inválido/i);
   } finally {
     await rm(raiz, { recursive: true, force: true });
   }

@@ -7,6 +7,7 @@
 #   ITMT_APP_SENHA        senha do role de aplicação itmt_app
 #   ADMIN_TOKEN           >= 24 caracteres (o main.ts valida)
 #   SESSION_SECRET        >= 32 caracteres
+#   API_KEY_PEPPER        >= 32 caracteres
 #   ADMIN_SENHA_INICIAL   >= 16 caracteres
 #   CORS_ORIGEM           ex.: https://itmt.mt.gov.br
 #   CADDY_DOMINIO         ex.: itmt.mt.gov.br
@@ -46,6 +47,7 @@ services:
       DATABASE_URL: postgres://itmt_app:${ITMT_APP_SENHA:?defina ITMT_APP_SENHA}@db:5432/itmt
       ADMIN_TOKEN: ${ADMIN_TOKEN:?defina ADMIN_TOKEN}
       SESSION_SECRET: ${SESSION_SECRET:?defina SESSION_SECRET}
+      API_KEY_PEPPER: ${API_KEY_PEPPER:?defina API_KEY_PEPPER}
       ADMIN_SENHA_INICIAL: ${ADMIN_SENHA_INICIAL:?defina ADMIN_SENHA_INICIAL}
       CORS_ORIGEM: ${CORS_ORIGEM:?defina CORS_ORIGEM}
       METRICS_TOKEN: ${METRICS_TOKEN:?defina METRICS_TOKEN}
