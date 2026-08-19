@@ -1,0 +1,10 @@
+title = "ITMT secret scanning"
+
+[allowlist]
+description = "Credenciais locais fixas, proibidas em producao pelo fail-fast da API"
+regexes = [
+  '''itmt-admin-dev''',
+  '''postgres://itmt:itmt@(localhost|db):5432/(itmt|postgres)''',
+  '''postgres://itmt_app:itmt_app@(localhost|db):5432/(itmt|itmt_test)'''
+]
+

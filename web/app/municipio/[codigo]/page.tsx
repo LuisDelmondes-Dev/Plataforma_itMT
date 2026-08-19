@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { apiGet, Resultado } from '@/lib/api';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
+import { REGIAO } from '@/lib/regiao';
 
 interface Ficha {
   codigo_ibge: string;
@@ -13,7 +14,8 @@ interface Ficha {
 const fmt = new Intl.NumberFormat('pt-BR');
 
 /** Ficha-síntese municipal, renderizada no servidor (RF-PORTAL-013: SSR para SEO). */
-export default async function FichaMunicipal({ params }: { params: { codigo: string } }) {
+export default async function FichaMunicipal(props: { params: Promise<{ codigo: string }> }) {
+  const params = await props.params;
   let ficha: Ficha;
   try {
     ficha = await apiGet<Ficha>(`/municipios/${params.codigo}`);
@@ -40,7 +42,7 @@ export default async function FichaMunicipal({ params }: { params: { codigo: str
   return (
     <div>
       <nav className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-        Mato Grosso › {ficha.regiao_intermediaria} › {ficha.regiao_imediata} › {ficha.nome}
+        {REGIAO.nome} › {ficha.regiao_intermediaria} › {ficha.regiao_imediata} › {ficha.nome}
       </nav>
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, margin: '16px 0 8px' }}>

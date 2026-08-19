@@ -5,8 +5,8 @@
 // RF-INGEST-009 (linhagem) e RG-10 (auditoria encadeada).
 // ============================================================
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, constants, mkdirSync, openSync, writeFileSync, readFileSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import pg from 'pg';
 
 export function pool() {
@@ -34,15 +34,16 @@ export async function registrarFonte(db, { nome, origem, url, baseLegal, licenca
   }
   if (!licenca) throw new Error(`RG-06: fonte "${nome}" sem licença declarada. Pipeline abortado.`);
 
-  const existente = await db.query(
-    `SELECT "Fonte_Id" AS id FROM "Fonte" WHERE "Fonte_Nome" = $1`,
-    [nome],
-  );
-  if (existente.rows[0]) return existente.rows[0].id;
-
   const r = await db.query(
     `INSERT INTO "Fonte" ("Fonte_Nome","Fonte_Origem","Fonte_Url","Fonte_BaseLegal","Fonte_Licenca","Fonte_Periodicidade")
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING "Fonte_Id" AS id`,
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT ("Fonte_Nome") DO UPDATE SET
+       "Fonte_Origem" = EXCLUDED."Fonte_Origem",
+       "Fonte_Url" = EXCLUDED."Fonte_Url",
+       "Fonte_BaseLegal" = EXCLUDED."Fonte_BaseLegal",
+       "Fonte_Licenca" = EXCLUDED."Fonte_Licenca",
+       "Fonte_Periodicidade" = EXCLUDED."Fonte_Periodicidade"
+     RETURNING "Fonte_Id" AS id`,
     [nome, origem, url, baseLegal, licenca, periodicidade ?? null],
   );
   return r.rows[0].id;
@@ -54,11 +55,42 @@ export async function registrarFonte(db, { nome, origem, url, baseLegal, licenca
  * aqui, diretório local ./bronze.
  */
 export function salvarBronze(nomeArquivo, conteudo) {
-  const dir = process.env.BRONZE_DIR ?? join(process.cwd(), 'bronze');
+  if (typeof nomeArquivo !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,199}$/i.test(nomeArquivo))
+    throw new Error('RF-INGEST-002: nome de arquivo Bronze inválido.');
+  if (typeof conteudo !== 'string' && !Buffer.isBuffer(conteudo))
+    throw new Error('RF-INGEST-002: conteúdo Bronze deve ser texto ou Buffer.');
+  const payload = Buffer.isBuffer(conteudo) ? conteudo : Buffer.from(conteudo, 'utf8');
+  const limite = Number(process.env.BRONZE_MAX_BYTES ?? 268_435_456);
+  if (!Number.isSafeInteger(limite) || limite < 1 || payload.byteLength > limite)
+    throw new Error(`RF-INGEST-002: conteúdo Bronze excede o limite de ${limite} bytes.`);
+
+  const dir = resolve(process.env.BRONZE_DIR ?? resolve(process.cwd(), 'bronze'));
   mkdirSync(dir, { recursive: true });
-  const caminho = join(dir, nomeArquivo);
-  writeFileSync(caminho, conteudo, { flag: 'w' });
-  return { caminho, hash: sha256(conteudo) };
+  const caminho = resolve(dir, nomeArquivo);
+  if (!caminho.startsWith(`${dir}${sep}`))
+    throw new Error('RF-INGEST-002: destino Bronze fora do diretório permitido.');
+  const hash = sha256(payload);
+  let descritor;
+  try {
+    descritor = openSync(caminho, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    writeFileSync(descritor, payload);
+    return { caminho, hash };
+  } catch (erro) {
+    if (erro?.code !== 'EEXIST') throw erro;
+    const leitura = openSync(caminho, constants.O_RDONLY);
+    let existente;
+    try { existente = readFileSync(leitura); } finally { closeSync(leitura); }
+    const hashExistente = sha256(existente);
+    if (hashExistente !== hash) {
+      throw new Error(
+        `RF-INGEST-002: Bronze imutável — ${caminho} já existe com hash diferente. ` +
+        'Use um nome versionado para a nova extração.',
+      );
+    }
+    return { caminho, hash };
+  } finally {
+    if (descritor !== undefined) closeSync(descritor);
+  }
 }
 
 export function lerBronze(caminho) {
@@ -67,12 +99,72 @@ export function lerBronze(caminho) {
 }
 
 export async function registrarCarga(db, { fonteId, hash, caminhoBronze, linhasLidas }) {
+  const cli = await db.connect();
+  try {
+    await cli.query('BEGIN');
+    await cli.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`carga:${fonteId}:${hash}`]);
+    const existente = await cli.query(
+      `SELECT "Carga_Id" AS id FROM "Carga"
+        WHERE "Carga_FonteId" = $1 AND "Carga_HashSha256" = $2
+        ORDER BY "Carga_Id" LIMIT 1`, [fonteId, hash],
+    );
+    if (existente.rows[0]) {
+      await cli.query('COMMIT');
+      return existente.rows[0].id;
+    }
+    const r = await cli.query(
+      `INSERT INTO "Carga"
+         ("Carga_FonteId","Carga_DataExtracao","Carga_HashSha256","Carga_CaminhoBronze","Carga_Status","Carga_LinhasLidas")
+       VALUES ($1, now(), $2, $3, 'PROMOVIDA', $4)
+       RETURNING "Carga_Id" AS id`,
+      [fonteId, hash, caminhoBronze, linhasLidas],
+    );
+    await cli.query('COMMIT');
+    return r.rows[0].id;
+  } catch (e) {
+    await cli.query('ROLLBACK');
+    throw e;
+  } finally {
+    cli.release();
+  }
+}
+
+/**
+ * Promoção Ouro em lote. Evita N round-trips e mantém a transação curta.
+ * Registros cujo município não existe na malha são ignorados pela junção.
+ */
+export async function promoverObservacoes(db, {
+  indicadorId, fonteId, cargaId, dataReferencia, linhas,
+}) {
+  if (!linhas.length) return { gravadas: 0, semMalha: 0 };
+  const codigos = linhas.map((l) => String(l.codigo));
+  const valores = linhas.map((l) => Number(l.valor));
   const r = await db.query(
-    `INSERT INTO "Carga" ("Carga_FonteId","Carga_DataExtracao","Carga_HashSha256","Carga_CaminhoBronze","Carga_Status","Carga_LinhasLidas")
-     VALUES ($1, now(), $2, $3, 'PROMOVIDA', $4) RETURNING "Carga_Id" AS id`,
-    [fonteId, hash, caminhoBronze, linhasLidas],
+    `WITH entrada AS (
+       SELECT * FROM unnest($1::text[], $2::numeric[]) AS x(codigo, valor)
+     ), normalizada AS (
+       SELECT m."Municipio_CodigoIbge" codigo, e.valor
+       FROM entrada e JOIN "Municipio" m
+         ON m."Municipio_CodigoIbge" = e.codigo
+         OR left(m."Municipio_CodigoIbge", 6) = left(e.codigo, 6)
+     ), promovida AS (
+       INSERT INTO "Observacao"
+         ("Observacao_IndicadorId","Observacao_CodigoIbge","Observacao_DataReferencia",
+          "Observacao_Valor","Observacao_FonteId","Observacao_CargaId")
+       SELECT $3, codigo, $4::date, valor, $5, $6 FROM normalizada
+       ON CONFLICT ("Observacao_IndicadorId","Observacao_CodigoIbge","Observacao_DataReferencia","Observacao_FonteId")
+       DO UPDATE SET "Observacao_Valor" = EXCLUDED."Observacao_Valor",
+                     "Observacao_CargaId" = EXCLUDED."Observacao_CargaId"
+       RETURNING 1
+     )
+     SELECT (SELECT count(*)::int FROM promovida) gravadas,
+            (SELECT count(*)::int FROM entrada) - (SELECT count(*)::int FROM normalizada) sem_malha`,
+    [codigos, valores, indicadorId, dataReferencia, fonteId, cargaId],
   );
-  return r.rows[0].id;
+  return {
+    gravadas: r.rows[0]?.gravadas ?? 0,
+    semMalha: r.rows[0]?.sem_malha ?? 0,
+  };
 }
 
 /**

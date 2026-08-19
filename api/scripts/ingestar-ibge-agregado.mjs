@@ -18,6 +18,7 @@
 import {
   pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar,
   verificarEsquema, quarentenar,
+  promoverObservacoes,
 } from './lib-ingest.mjs';
 
 const PRESETS = {
@@ -92,7 +93,10 @@ try {
   } else {
     console.log(`↓ Baixando agregado ${cfg.agregado}/${cfg.variavel} (${ano}) …`);
     bruto = await baixar(URL);
-    ({ caminho, hash } = salvarBronze(`ibge-ag${cfg.agregado}-v${cfg.variavel}-mt-${ano}.json`, bruto));
+    const recorte = cfg.classificacao
+      ? `-c${Buffer.from(cfg.classificacao).toString('hex').slice(0, 48)}`
+      : '';
+    ({ caminho, hash } = salvarBronze(`ibge-ag${cfg.agregado}-v${cfg.variavel}${recorte}-mt-${ano}.json`, bruto));
     console.log(`✓ Bronze gravado: ${caminho}`);
   }
   console.log(`  SHA-256: ${hash}`);
@@ -153,34 +157,12 @@ try {
   }
 
   const dataRef = `${ano}${cfg.refDia}`;
-  const cli = await db.connect();
-  let gravadas = 0;
-  try {
-    await cli.query('BEGIN');
-    for (const l of linhas) {
-      const r = await cli.query(
-        `INSERT INTO "Observacao"
-           ("Observacao_IndicadorId","Observacao_CodigoIbge","Observacao_DataReferencia",
-            "Observacao_Valor","Observacao_FonteId","Observacao_CargaId")
-         SELECT $1,$2,$3::date,$4,$5,$6
-          WHERE EXISTS (SELECT 1 FROM "Municipio" WHERE "Municipio_CodigoIbge" = $2)
-         ON CONFLICT ("Observacao_IndicadorId","Observacao_CodigoIbge","Observacao_DataReferencia","Observacao_FonteId")
-         DO UPDATE SET "Observacao_Valor" = EXCLUDED."Observacao_Valor",
-                       "Observacao_CargaId" = EXCLUDED."Observacao_CargaId"`,
-        [indicadorId, l.codigo, dataRef, l.valor, fonteId, cargaId],
-      );
-      if (r.rowCount) gravadas++;
-    }
-    await cli.query('COMMIT');
-  } catch (e) {
-    await cli.query('ROLLBACK');
-    throw e;
-  } finally {
-    cli.release();
-  }
+  const { gravadas, semMalha } = await promoverObservacoes(db, {
+    indicadorId, fonteId, cargaId, dataReferencia: dataRef, linhas,
+  });
 
   await auditar(db, 'ingest', 'PROMOCAO_OURO', 'Observacao', `${cfg.indicador}-${ano}`, {
-    carga_id: cargaId, gravadas,
+    carga_id: cargaId, gravadas, sem_malha: semMalha,
   });
   console.log(`✓ Ouro: ${gravadas} observações (ref. ${dataRef}).`);
 } catch (e) {

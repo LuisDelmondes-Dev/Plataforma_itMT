@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { PlanoConsulta, Clarificacao } from './tipos';
+import { REGIAO } from '../config/regiao';
 
 export function normalizar(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -22,6 +23,10 @@ const SINONIMOS: Record<string, string[]> = {
   'PIB per capita': ['pib per capita', 'renda per capita'],
   'Cobertura vacinal — poliomielite': ['cobertura vacinal', 'vacinacao', 'vacina', 'poliomielite', 'imunizacao'],
   'Área plantada': ['area plantada', 'plantio', 'lavoura', 'hectares plantados'],
+  'Extensão de estradas vicinais': [
+    'extensao de estradas vicinais', 'estradas vicinais', 'estrada vicinal',
+    'quilometros de estrada vicinal', 'km de estrada vicinal', 'malha vicinal',
+  ],
 };
 
 @Injectable()
@@ -119,8 +124,8 @@ export class InterpreteLexico {
     else if (rgiM) { recorte = 'RGI'; codigo = rgiM.codigo; rotuloLocal = rgiM.nome; }
     else if (consM) { recorte = 'CONSORCIO'; codigo = consM.codigo; rotuloLocal = consM.nome; }
     else if (munM) { recorte = 'MUNICIPIO'; codigo = munM.codigo; rotuloLocal = munM.nome; }
-    else if (/\bmato grosso\b|\bno estado\b|\bestadual\b|\bem mt\b/.test(q)) {
-      recorte = 'ESTADO'; codigo = null; rotuloLocal = 'Mato Grosso';
+    else if (REGIAO.aliases.some((alias) => q.includes(` ${normalizar(alias)} `)) || /\bno estado\b|\bestadual\b/.test(q)) {
+      recorte = 'ESTADO'; codigo = null; rotuloLocal = REGIAO.nome;
     } else if (contexto?.codigo_ibge) {
       // RF-CHAT-010: contexto territorial da sessão ("e em Sinop?" já resolvido no turno anterior)
       recorte = 'MUNICIPIO'; codigo = contexto.codigo_ibge; rotuloLocal = '';
@@ -150,7 +155,7 @@ export class InterpreteLexico {
         clarificacao: {
           pergunta: 'De qual local você quer o dado?',
           opcoes: [
-            { rotulo: 'Todo o Estado de Mato Grosso', pergunta_sugerida: `${pergunta} em Mato Grosso` },
+            { rotulo: `Todo o Estado de ${REGIAO.nome}`, pergunta_sugerida: `${pergunta} em ${REGIAO.nome}` },
             { rotulo: 'Um município específico', pergunta_sugerida: `${pergunta} em Cuiabá` },
           ],
         },

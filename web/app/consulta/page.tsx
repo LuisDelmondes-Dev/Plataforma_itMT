@@ -6,6 +6,7 @@ import { apiGet, Resultado } from '@/lib/api';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { Sparkline } from '@/components/Sparkline';
+import { REGIAO } from '@/lib/regiao';
 
 interface Municipio {
   codigo_ibge: string;
@@ -318,7 +319,7 @@ function Consulta() {
             style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 12 }}
             aria-label="Trilha de navegação"
           >
-            Mato Grosso › {local.nome}
+            {REGIAO.nome} › {local.nome}
             {tema ? ` › ${tema.nome}` : ''}
             {subtema ? ` › ${subtema.nome}` : ''}
           </nav>
@@ -421,7 +422,7 @@ function Consulta() {
                         ['Município', comparacao.municipio],
                         ['Região Imediata', comparacao.regiaoImediata],
                         ['Região Intermediária', comparacao.regiaoIntermediaria],
-                        ['Estado de Mato Grosso', comparacao.estado],
+                        [`Estado de ${REGIAO.nome}`, comparacao.estado],
                       ] as const
                     ).map(([rotulo, r]) => (
                       <tr key={rotulo}>
@@ -497,4 +498,3 @@ function Consulta() {
     </div>
   );
 }
-

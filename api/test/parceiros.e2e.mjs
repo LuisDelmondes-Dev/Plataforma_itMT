@@ -49,7 +49,15 @@ test('ADMIN cria conta PARCEIRO e o parceiro loga com papel no token', async () 
   ).json();
   assert.equal(login.papel, 'PARCEIRO');
   assert.ok(login.token);
-  tokenParceiro = login.token;
+  const organizacoes = await (await fetch(`${BASE}/auth/organizacoes`, {
+    headers: { Authorization: `Bearer ${login.token}` },
+  })).json();
+  const contexto = await fetch(`${BASE}/auth/contexto`, {
+    method: 'POST', headers: { Authorization: `Bearer ${login.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ organization_id: organizacoes[0].organization_id }),
+  });
+  assert.equal(contexto.status, 201);
+  tokenParceiro = (await contexto.json()).token;
 });
 
 test('anônimo não submete contribuição (403)', async () => {

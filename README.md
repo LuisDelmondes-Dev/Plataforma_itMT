@@ -7,7 +7,7 @@ Monorepo com três partes:
 |---|---|---|
 | `db/` | PostgreSQL 16 | DDL do núcleo F1 + seed demonstrativo |
 | `api/` | NestJS + pg | **Motor determinístico** — território, taxonomia, consulta, rollup, auditoria |
-| `web/` | Next.js 14 (App Router) | Portal com sidebar retrátil e design system **Territorial Intelligence System** |
+| `web/` | Next.js 16 (App Router) | Portal com sidebar retrátil e design system **Territorial Intelligence System** |
 
 ## Subir tudo (Docker)
 
@@ -34,11 +34,14 @@ cd web && npm install
 API_URL=http://localhost:3001 npm run dev                                # :3000
 ```
 
-## Estado: F1 código-completo
+## Estado: baseline executável — programa em evolução
 
-Todos os requisitos do escopo F1 do roadmap (§16) estão implementados e cobertos
-pela suíte `npm test` (11 testes e2e, incluindo o **teste de procedência** e o
-**teste de números** que o DoD §18 exige — ambos falham o build se violados).
+O repositório comprova os principais invariantes de arquitetura, mas ainda não
+representa a operação estadual integral dos anexos. Código, dados, operação e
+aceite são acompanhados separadamente na
+[`MATRIZ_EVIDENCIAS.md`](docs/programa/MATRIZ_EVIDENCIAS.md). A suíte `npm test`
+recria um banco descartável e executa 57 testes e2e, incluindo procedência,
+números, vetos, projeções, Xingú, campo, direitos e co-produção.
 
 | Requisito F1 | Estado |
 |---|---|
@@ -63,7 +66,7 @@ pela suíte `npm test` (11 testes e2e, incluindo o **teste de procedência** e o
 | RF-INGEST-010 quarentena | ✅ `/v1/admin/quarentena` |
 | RF-INGEST-011 alerta de fonte parada | ✅ `alerta:fontes` (agendar no cron) |
 
-**O que "100%" não cobre (por natureza, não por pendência de código):**
+**O que o baseline ainda não cobre:**
 o critério "6 dos 17 temas com dados reais" se completa **rodando os conectores
 contra as fontes reais** (abaixo) — 6 temas já têm conector/config prontos:
 Demografia, Economia Privada (PIB), Saúde (CNES), Educação (INEP), Segurança
@@ -71,7 +74,7 @@ Demografia, Economia Privada (PIB), Saúde (CNES), Educação (INEP), Segurança
 via SSO institucional (ponto único de troca). Os artefatos F0
 (`ARQUITETURA-ITMT.md` consolidado) seguem como documento à parte.
 
-## F2 — IA Xingú (código-completo, avaliado)
+## F2 — IA Xingú (implementação parcial avaliada)
 
 A borda de linguagem do PRD §10, exatamente como especificada:
 
@@ -114,7 +117,7 @@ export XINGU_MODELO=claude-haiku-4-5   # ou outro; A15 (custo) entra no roadmap 
 
 Sem a chave, nada quebra: `RG-05` por construção.
 
-## F3 — Mapeamento próprio (código-completo)
+## F3 — Mapeamento próprio (estrutura executável; operação ainda piloto/demo)
 
 Módulos `GEO`, `MTIMAGENS`/`VIDEOS` e `CAMPO`. A marca do F3: **todos os vetos são
 de banco** — triggers PL/pgSQL em `db/04-f3.sql`, provados por teste tentando
@@ -147,7 +150,7 @@ ferramenta de visão — o sistema garante que **sem a verificação registrada,
 publica**, que é exatamente o que RC-03 pede do software. KR2.1/2.2/2.3 (30
 municípios entregues) são metas de operação de campo medidas pelo painel.
 
-## F4 — Mapa de Direitos (código-completo)
+## F4 — Mapa de Direitos (módulo adicional executável)
 
 Materialização executável do **Prompt Mestre — Mapa Brasileiro de Serviços
 Públicos Gratuitos, Benefícios e Direitos do Cidadão**
@@ -206,7 +209,7 @@ POST /v1/admin/direitos/:id/publicar     # passa pelos vetos F4-RG-01..05
 
 Banco: `psql -d itmt -f db/06-f4.sql -f db/07-seed-f4.sql` (o compose já monta os dois).
 
-## F5 — Agentes de fonte + cofre de segredos (código-completo)
+## F5 legado — Agentes de fonte + cofre (incorporado à F2 do Plano Diretor)
 
 **Um agente por fonte de dados** (`/fontes` no portal, `/v1/agentes/fontes` na API),
 com uma regra só: **banco primeiro**. Se a informação existe no banco e está dentro
@@ -262,14 +265,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 | Proteção | Onde | Prova |
 |---|---|---|
-| API conecta como `itmt_app`, nunca dona do banco — trilha de auditoria INSERT-ONLY vale para a aplicação (RG-10) | `db/08-seguranca.sql` + fail-fast no `main.ts` | `UPDATE "EventoAuditoria"` como itmt_app → `permissão negada`; suíte 44/44 roda como itmt_app |
+| API conecta como `itmt_app`, nunca dona do banco — trilha de auditoria INSERT-ONLY vale para a aplicação (RG-10) | `db/08-seguranca.sql` + fail-fast no `main.ts` | `UPDATE "EventoAuditoria"` como itmt_app → `permissão negada`; suíte isolada 56/56 |
 | Fail-fast de produção: token de dev, role errado ou CORS ausente ⇒ processo não sobe | `main.ts` | exit 1 com as três violações listadas |
 | Token ADMIN em comparação de tempo constante; produção exige ≥24 chars | `AdminGuard` | — |
 | Headers de segurança + CORS restrito por `CORS_ORIGEM` + `trust proxy` | `main.ts` (helmet) | — |
 | Rate limit global (20/s, 300/min por IP; ajustável) ativo em produção | `app.module.ts` (@nestjs/throttler) | desligado em dev/testes |
 | Healthcheck processo+banco | `GET /v1/saude` + HEALTHCHECK nos Dockerfiles | `{"ok":true,"banco":"ok"}` |
 | Migrações versionadas e idempotentes | `api/scripts/migrar.mjs` → tabela `_Migracao` | aplica 8, reexecução aplica 0 |
-| CI: Postgres + migrações + 44 testes + verificador de cadeia + build web | `.github/workflows/ci.yml` | roda em cada push/PR |
+| CI: banco descartável + 56 testes + cadeia + builds + audit + SBOM + secrets scan + CodeQL | `.github/workflows/ci.yml` | roda em cada push/PR |
 | Rotinas diárias (RF-INGEST-011 fonte parada; RF-ADMIN-008 cadeia) | serviço `rotinas` no compose prod | log com alerta explícito |
 | Backup diário do Postgres, retenção 14 dias | serviço `backup` no compose prod | volume `backups` |
 | Imagens multi-stage, não-root, só deps de produção | `api/Dockerfile`, `web/Dockerfile` | — |
@@ -329,7 +332,7 @@ GET  /v1/admin/quarentena
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/itmt npm test   # 11 testes e2e
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/itmt npm test   # 56 testes em itmt_test descartável
 ```
 
 ### Casos de teste que demonstram as regras
@@ -370,14 +373,20 @@ npm run ingest:pib -- 2021
 node scripts/ingestar-ibge-agregado.mjs custom 2022 --agregado 1612 --variavel 216 \
      --indicador "Área plantada" --unidade hectares --tipo SOMA
 
-# 4º–6º — Saúde (CNES), Educação (INEP), Segurança (SESP), Agronegócio (PAM):
-# baixe o CSV oficial da fonte e rode o conector genérico com o config pronto:
-node scripts/ingestar-csv.mjs ingest-configs/cnes-leitos.json  ~/Downloads/cnes.csv
-node scripts/ingestar-csv.mjs ingest-configs/inep-matriculas.json ~/Downloads/censo-escolar.csv
+# Pacote oficial F1 via API SIDRA/IBGE: 10 indicadores, incluindo os 2 de Educação.
+npm run ingest:f1:ibge -- --aceitar-esquema
+
+# Saúde via CNES/TabNet (leitos e estabelecimentos), usando o coletor Python:
+npm run coletar:fontes
+
+# Fontes complementares que chegam em CSV continuam usando o conector genérico:
 node scripts/ingestar-csv.mjs ingest-configs/sesp-ocorrencias.json ~/Downloads/sesp.csv
-node scripts/ingestar-csv.mjs ingest-configs/pam-area-plantada.json ~/Downloads/pam.csv
 # (ajuste "colunas" no config se o cabeçalho oficial diferir — o drift
 #  de esquema avisa exatamente o que foi lido)
+
+# Gate técnico (dados reais, procedência e 10/10 pilotos) e gate final:
+npm run validar:f1:dados
+npm run validar:f1
 
 # Manutenção/atualização (no serviço `rotinas` do compose de produção, 1×/dia):
 npm run manter:particoes         # cria partições Observacao futuras (≥2029) antes de precisar
@@ -406,22 +415,27 @@ node scripts/ingestar-ibge-territorio.mjs --from-bronze bronze/ibge-municipios-m
 node scripts/ingestar-ibge-populacao.mjs 2024 --from-bronze bronze/ibge-populacao-mt-2024.json
 ```
 
-> Os demais indicadores do seed (leitos, matrículas, PIB, vacinação) continuam
-> demonstrativos até ganharem seus próprios conectores — este é o backlog de F1,
-> um conector por linha da tabela de fontes do PRD (§14).
+> O pacote de lançamento F1 é separado do seed demonstrativo e pode ser auditado em
+> `GET /v1/transparencia/lancamento-f1`. Dados carregados continuam invisíveis no portal
+> até o parecer humano favorável, conforme o runbook
+> `docs/operacao/CURADORIA_PACOTE_F1.md`.
 
-## Fora deste MVP (roadmap do PRD)
+## Estado atual e validação
 
-- **IA Xingú** (borda de linguagem, agentes A01–A15) — F2; o motor determinístico
-  que ela consumirá já é este.
-- `GEO`, `MTIMAGENS`, `VIDEOS`, `CAMPO`, `CENSO` — F3+.
-- Exportação CSV/XLSX/PDF, permalinks por combinação, painel de cobertura completo,
-  ingestão Bronze/Prata/Ouro com quarentena — próximos incrementos de F1.
+O repositório inclui Xingú multiprovedor, documentos/RAG, PWA de campo offline,
+GIS/3D Tiles, multitenancy com RLS, API de parceiros, participação pública,
+ciência aberta/DCAT, object storage S3, continuidade e observabilidade.
 
-## Decisão divergente do PRD (registrar em ADR)
+```bash
+cd api
+npm test                  # 40 migrações + 131 testes + cadeia de auditoria
+npm run test:restore      # prova destrutiva somente em bancos *_test
+npm audit --omit=dev --audit-level=moderate
 
-O PRD manda F0 (documentação) antes de qualquer código. Este MVP foi construído
-como **prova de arquitetura executável** — os invariantes críticos (RN-001..005,
-RG-10, procedência) estão demonstrados em código testável. `ARQUITETURA-ITMT.md`
-e `DDL-ITMT.sql` completos continuam sendo os artefatos de F0; este repositório
-serve de referência viva para escrevê-los.
+cd ../web
+npm run build
+npm audit --omit=dev --audit-level=moderate
+```
+
+O estado fase a fase, inclusive os bloqueios de infraestrutura, dados, campanhas
+e aceite externo, está em `docs/programa/EXECUCAO_COMPLETA_F0_F7.md`.

@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { apiGet, Resultado } from '@/lib/api';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
+import { REGIAO } from '@/lib/regiao';
 import { Sparkline } from '@/components/Sparkline';
 
 interface Destaque { id: number; nome: string; unidade: string; tema: string }
@@ -70,7 +71,7 @@ export default function PaginaPainel() {
   return (
     <div>
       <p className="overline" style={{ color: 'var(--primary)' }}>PAINEL · LEITURA ESTRATÉGICA</p>
-      <h1 className="headline-lg" style={{ margin: '4px 0 8px' }}>Mato Grosso em números</h1>
+      <h1 className="headline-lg" style={{ margin: '4px 0 8px' }}>{REGIAO.nome} em números</h1>
       <p className="body-md" style={{ color: 'var(--on-surface-variant)', maxWidth: '65ch' }}>
         O estado consolidado a partir dos indicadores com dado real — cada número com a sua
         procedência. Para o recorte municipal, use o <Link href="/mapa">mapa</Link> ou a{' '}

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -20,6 +21,8 @@ const I = {
   transparencia: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 4.5 6v5c0 4.6 3.2 8 7.5 10 4.3-2 7.5-5.4 7.5-10V6L12 3Z" /><path d="m9 12 2 2 4-4.5" /></svg>,
   direitos: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16M5 7h14M5 7 3 12a3.2 3.2 0 0 0 6.4 0L7 7M17 7l-2.4 5a3.2 3.2 0 0 0 6.4 0L19 7M8.5 20h7" /></svg>,
   fontes: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3" /><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6" /></svg>,
+  biblioteca: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Z" /><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z" /></svg>,
+  integracoes: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 12h8M12 8v8" /><path d="M7 4H5a2 2 0 0 0-2 2v3M17 4h2a2 2 0 0 1 2 2v3M7 20H5a2 2 0 0 1-2-2v-3M17 20h2a2 2 0 0 0 2-2v-3" /></svg>,
 };
 
 const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof typeof I }[] }[] = [
@@ -32,6 +35,7 @@ const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof 
       { href: '/painel', rotulo: 'Painel', icone: 'painel' },
       { href: '/cenarios', rotulo: 'Cenários', icone: 'cenarios' },
       { href: '/xingu', rotulo: 'IA Xingú', icone: 'xingu' },
+      { href: '/biblioteca', rotulo: 'Biblioteca', icone: 'biblioteca' },
       { href: '/municipio/5103403', rotulo: 'Fichas municipais', icone: 'ficha' },
       // "/fontes" saiu do menu público de propósito: os agentes de fonte
       // trabalham nos bastidores (auto-busca em toda consulta com ausência);
@@ -40,7 +44,10 @@ const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof 
   },
   {
     grupo: 'Cidadania',
-    itens: [{ href: '/direitos', rotulo: 'Mapa de Direitos', icone: 'direitos' }],
+    itens: [
+      { href: '/direitos', rotulo: 'Mapa de Direitos', icone: 'direitos' },
+      { href: '/participacao', rotulo: 'Participação', icone: 'transparencia' },
+    ],
   },
   {
     grupo: 'Mapeamento próprio',
@@ -55,6 +62,9 @@ const NAV: { grupo: string; itens: { href: string; rotulo: string; icone: keyof 
     itens: [
       { href: '/cobertura', rotulo: 'Cobertura', icone: 'cobertura' },
       { href: '/transparencia', rotulo: 'Transparência', icone: 'transparencia' },
+      { href: '/integracoes', rotulo: 'Integrações', icone: 'integracoes' },
+      { href: '/ciencia', rotulo: 'Ciência aberta', icone: 'biblioteca' },
+      { href: '/organizacoes', rotulo: 'Organizações', icone: 'integracoes' },
     ],
   },
 ];
@@ -91,9 +101,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="shell" data-recolhida={recolhida ? '1' : '0'} data-aberta={aberta ? '1' : '0'}>
       <aside className="sidebar" aria-label="Navegação principal">
         <div className="marca">
-          <Link href="/" aria-label="Início — Plataforma itMT" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/itmt-icone.png" alt="" />
+          <Link href="/" prefetch={false} aria-label="Início — Plataforma itMT" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Image src="/itmt-icone.png" alt="" width={36} height={37} />
             <span className="nome">Plataforma itMT</span>
           </Link>
         </div>
@@ -105,6 +114,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={it.href}
                   href={it.href}
+                  prefetch={false}
                   className={`sidebar-item${ativo(it.href) ? ' ativo' : ''}`}
                   aria-current={ativo(it.href) ? 'page' : undefined}
                   title={recolhida ? it.rotulo : undefined}
@@ -139,12 +149,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <Link href="/" aria-label="Início — Plataforma itMT" style={{ display: 'flex', alignItems: 'center' }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="logo-header" src="/itmt-icone.png" alt="Plataforma itMT" />
+          <Link href="/" prefetch={false} aria-label="Início — Plataforma itMT" style={{ display: 'flex', alignItems: 'center' }}>
+            <Image className="logo-header" src="/itmt-icone.png" alt="Plataforma itMT" width={36} height={37} />
           </Link>
         </header>
-        <main id="conteudo" style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
+        <main id="conteudo" tabIndex={-1} style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
           {children}
         </main>
       </div>

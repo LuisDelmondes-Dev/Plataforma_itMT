@@ -1,4 +1,4 @@
-# Coletores — fontes que exigem download (CNES, INEP)
+# Coletores — fontes que exigem download (CNES e Inep)
 
 Fontes que **não** têm API limpa (CNES/DATASUS via TabNet, INEP via Sinopse em
 Excel) entram por aqui. O Python faz só o que o Node não faz bem — raspar/ler o
@@ -23,8 +23,10 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Window
 # banco: use o dono (as migrações do conector rodam como itmt)
 set DATABASE_URL=postgres://itmt:itmt@localhost:5432/itmt
 
-python -m coletores.coletar_fontes            # todas as fontes
-python -m coletores.coletar_fontes --fonte inep --ano 2023
+cd ..
+coletores/.venv/Scripts/python -m coletores.coletar_fontes            # todas as fontes
+coletores/.venv/Scripts/python -m coletores.coletar_fontes --fonte cnes-estabelecimentos
+coletores/.venv/Scripts/python -m coletores.coletar_fontes --fonte inep --ano 2024
 ```
 
 Pré-requisito de catálogo: os subtemas `Matrículas — rede pública` e
@@ -44,9 +46,8 @@ cd api && node scripts/coletar-fontes.mjs   # o que o rotinas roda 1×/dia
 # ou: npm run coletar:fontes
 ```
 
-> A imagem do serviço `rotinas` precisa ter Python + o venv de `coletores/`.
-> Sem eles, o wrapper apenas avisa e segue — a coleta fica pendente até o
-> ambiente ter Python, sem quebrar as outras rotinas.
+> A imagem do serviço `rotinas` é construída por `coletores/Dockerfile` e já
+> inclui Python, dependências e os scripts Node do pipeline.
 
 **Dev no Windows (sem Docker):** agende o mesmo wrapper com o Task
 Scheduler (`pythonw` roda sem janela):
@@ -61,7 +62,7 @@ schtasks /Create /TN "ITMT-coletores" /SC DAILY /ST 05:30 /F ^
 O download real depende do layout de cada fonte — isolei isso para ser um ajuste
 de **uma linha**, não mudança de código:
 
-- **CNES** (`fetch_cnes`): **funcionando** (validado ao vivo — 96 municípios,
+- **CNES leitos** (`fetch_cnes`): funcionamento validado contra o TabNet.
   Jun/2026). Fluxo real do TabNet: lê o formulário (`deftohtm.exe`), POSTa a
   consulta em `tabcgi.exe` (arquivo `ltmt<AAMM>.dbf`, `Incremento=Qtd_existente`,
   cada dimensão em "todas as categorias", corpo latin-1 codificado UMA vez) e
@@ -71,7 +72,12 @@ de **uma linha**, não mudança de código:
   UTI/complementares tem outro `.def` (não localizado com nomes padrão:
   `leicompmt`/`leicomplmt`/`complbr` retornam erro). Quando a fonte de UTI for
   achada, entra como coletor/indicador separado, sem misturar com internação.
-- **INEP** (`fetch_inep`): a detecção da aba (`matríc`) e das colunas
+- **CNES estabelecimentos** (`fetch_cnes_estabelecimentos`): funcionamento
+  validado ao vivo com 141 municípios e competência junho/2026.
+- **INEP** (`fetch_inep`): usa a Sinopse Estatística oficial. O arquivo anual
+  é grande (centenas de MB) e a origem pode encerrar conexões; retries e TLS pelo
+  repositório de certificados do sistema estão habilitados. A detecção da aba
+  (`matríc`) e das colunas
   (`_coluna(...)` com as pistas "código do município" e "pública") cobre o
   layout recente; a Sinopse muda de forma entre anos.
 

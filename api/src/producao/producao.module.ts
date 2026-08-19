@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { GeoAdminController, GeoPublicoController } from './geo.controller';
 import { MidiaAdminController, MidiaPublicoController, CampoController } from './producao.controller';
-import { AdminGuard } from '../admin/admin.controller';
 import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
@@ -11,6 +10,5 @@ import { AuditoriaModule } from '../auditoria/auditoria.module';
     MidiaAdminController, MidiaPublicoController,
     CampoController,
   ],
-  providers: [AdminGuard],
 })
 export class ProducaoModule {}

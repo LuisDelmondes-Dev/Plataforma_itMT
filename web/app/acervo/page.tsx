@@ -9,7 +9,8 @@ interface Ativo {
 export const dynamic = 'force-dynamic';
 
 /** MTIMAGENS + VIDEOS (RF-IMG-001): acervo público pesquisável. */
-export default async function Acervo({ searchParams }: { searchParams: { q?: string; tipo?: string } }) {
+export default async function Acervo(props: { searchParams: Promise<{ q?: string; tipo?: string }> }) {
+  const searchParams = await props.searchParams;
   const qs = new URLSearchParams();
   if (searchParams.q) qs.set('q', searchParams.q);
   if (searchParams.tipo) qs.set('tipo', searchParams.tipo);

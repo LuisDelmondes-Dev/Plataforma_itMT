@@ -68,6 +68,34 @@ test('geoportal público só expõe PUBLICO+PUBLICADO, com metadados RF-GEO-004'
   }
 });
 
+test('F3-R023/R024: 3D Tiles exige metadados completos e os publica no geoportal', async () => {
+  const proj = await post('/admin/geo/projetos', {
+    codigo_ibge: '5107909', autorizacao_cadastro: 'CAD-3D', autorizacao_voo: 'VOO-3D',
+    responsavel_tecnico: 'RT 3D', registro_profissional: 'CREA-3D', data_voo: '2026-06-02',
+    sensor: 'LIDAR', gsd_cm: 5, acuracia: 'Classe A',
+  });
+  assert.equal(proj.status, 201);
+  const incompleto = await post('/admin/geo/produtos', {
+    projeto_id: proj.body.id, tipo: 'TILES_3D', caminho_objeto: 's3://geo/incompleto/tileset.json',
+  });
+  assert.equal(incompleto.status, 422);
+
+  const hash = 'b'.repeat(64);
+  const completo = await post('/admin/geo/produtos', {
+    projeto_id: proj.body.id, tipo: 'TILES_3D', caminho_objeto: 's3://geo/modelo/tileset.json',
+    formato: '3D Tiles 1.1', tileset_url: 'https://tiles.example.test/modelo/tileset.json',
+    bounds_wgs84: [-56.2, -15.8, -56.0, -15.6], crs_origem: 'SIRGAS 2000 / UTM 21S',
+    hash_sha256: hash,
+  });
+  assert.equal(completo.status, 201);
+  assert.equal((await post(`/admin/geo/produtos/${completo.body.id}/publicar`)).status, 201);
+  const publico = await get('/geo/produtos');
+  const tiles = publico.body.find((p) => p.id === completo.body.id);
+  assert.equal(tiles.tileset_url, 'https://tiles.example.test/modelo/tileset.json');
+  assert.deepEqual(tiles.bounds_wgs84, [-56.2, -15.8, -56.0, -15.6]);
+  assert.equal(tiles.hash_sha256, hash);
+});
+
 test('RF-GEO-008: cobertura de imagem de rua com os 3 estados', async () => {
   const r = await get('/geo/cobertura-rua');
   const estados = new Set(r.body.map((x) => x.estado));
@@ -152,6 +180,20 @@ test('acervo público pesquisável só devolve publicados', async () => {
   assert.equal(semLicenca, undefined);
 });
 
+test('F5-R018/R019: contrato unificado expõe lifecycle e metadados verificáveis', async () => {
+  const r = await get('/geo/ativos');
+  assert.equal(r.status, 200);
+  assert.ok(r.body.length > 0);
+  for (const ativo of r.body) {
+    assert.equal(ativo.lifecycle, 'PUBLISHED');
+    assert.ok(ativo.dominio && ativo.id && ativo.tipo && ativo.codigo_ibge);
+    assert.ok(ativo.origem && ativo.object_key && ativo.versao);
+    assert.equal(typeof ativo.qualidade, 'object');
+    assert.equal(typeof ativo.cobertura, 'object');
+    assert.equal(typeof ativo.processamento, 'object');
+  }
+});
+
 // ---------------- CAMPO ----------------
 test('RF-CAMPO-002: missão sem autorização vigente NÃO executa; com ela, executa', async () => {
   const m = await post('/admin/campo/missoes', {
@@ -174,12 +216,20 @@ test('RF-CAMPO-002: missão sem autorização vigente NÃO executa; com ela, exe
 test('RF-CAMPO-003: captura sincronizada guarda operador/GNSS/EXIF e momento da captura', async () => {
   const missoes = await get('/admin/campo/missoes', ADMIN);
   const m = missoes.body[0];
-  const c = await post(`/admin/campo/missoes/${m.id}/capturas`, {
+  const payload = {
     operador: 'Piloto 1', sensor: 'RGB', gnss: { lat: -13.06, lon: -56.09, precisao_m: 0.8 },
     exif: { iso: 100 }, checklist_ok: true, caminho_objeto: 's3://campo/img001.jpg',
-    capturado_em: '2026-07-08T09:00:00Z',
-  });
+    capturado_em: '2026-07-08T09:00:00Z', formulario_versao: 'campo-v1',
+    idempotency_key: '40000000-0000-4000-8000-000000000003',
+  };
+  const c = await post(`/admin/campo/missoes/${m.id}/capturas`, payload);
   assert.equal(c.status, 201);
+  assert.equal(c.body.duplicada, false);
+  const repetida = await post(`/admin/campo/missoes/${m.id}/capturas`, payload);
+  assert.equal(repetida.status, 201);
+  assert.equal(repetida.body.duplicada, true);
+  const conflito = await post(`/admin/campo/missoes/${m.id}/capturas`, { ...payload, operador: 'Ataque divergente' });
+  assert.equal(conflito.status, 409);
 });
 
 test('RF-CAMPO-004: painel agrega as 4 frentes por município', async () => {

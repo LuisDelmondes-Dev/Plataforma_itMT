@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { DatabaseService } from '../database/database.service';
+import { DatabaseService, PLATFORM_PUBLIC_CONTEXT } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { ValidacaoTecnicaService } from './validacao-tecnica.service';
 import { AgentExecutionService } from '../auth/agent-execution.service';
@@ -37,7 +37,7 @@ export class AdminGuard implements CanActivate {
     const esperado = process.env.ADMIN_TOKEN ?? 'itmt-admin-dev';
     const a = createHash('sha256').update(token).digest();
     const b = createHash('sha256').update(esperado).digest();
-    if (timingSafeEqual(a, b)) return true;
+    if (process.env.NODE_ENV !== 'production' && timingSafeEqual(a, b)) return true;
     // (2) token de sessão assinado com papel de gestão.
     const sessao = verificarToken(token);
     if (sessao && (sessao.papel === 'ADMIN' || sessao.papel === 'CURADOR')) {
@@ -86,7 +86,7 @@ export class AdminController {
   /** Registry (RF004): últimas execuções de agentes para inspeção operacional. */
   @Get('agentes/execucoes')
   execucoes() {
-    return this.registry.recentes(100);
+    return this.db.withTenantTransaction(PLATFORM_PUBLIC_CONTEXT, () => this.registry.recentes(100));
   }
 
   /** Agente de Validação Técnica: checagens automáticas (não decide — RG-09). */

@@ -8,6 +8,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { apiGet } from '@/lib/api';
+import { REGIAO } from '@/lib/regiao';
 
 interface Destaque { id: number; nome: string; unidade: string; tema: string }
 interface Municipio { codigo_ibge: string; nome: string }
@@ -126,7 +127,7 @@ export default function PaginaCenarios() {
         <label className="label-md" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           Local
           <select className="campo" value={codigo} onChange={(e) => setCodigo(e.target.value)} aria-label="Escolher local">
-            <option value="">Mato Grosso (estado)</option>
+            <option value="">{REGIAO.nome} (estado)</option>
             {municipios.map((m) => <option key={m.codigo_ibge} value={m.codigo_ibge}>{m.nome}</option>)}
           </select>
         </label>

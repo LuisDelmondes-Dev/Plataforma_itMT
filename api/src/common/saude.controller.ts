@@ -10,11 +10,23 @@ export class SaudeController {
 
   @Get()
   async saude() {
+    return this.readiness();
+  }
+
+  /** Liveness não depende de serviços externos: processo e event loop respondem. */
+  @Get('live')
+  liveness() {
+    return { ok: true, processo: 'vivo' };
+  }
+
+  /** Readiness só passa quando o banco necessário ao tráfego está acessível. */
+  @Get('ready')
+  async readiness() {
     try {
       await this.db.query('SELECT 1');
-      return { ok: true, banco: 'ok' };
+      return { ok: true, pronto: true, banco: 'ok' };
     } catch {
-      throw new ServiceUnavailableException({ ok: false, banco: 'indisponivel' });
+      throw new ServiceUnavailableException({ ok: false, pronto: false, banco: 'indisponivel' });
     }
   }
 }

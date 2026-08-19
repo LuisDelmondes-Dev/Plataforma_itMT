@@ -1,22 +1,26 @@
 import {
   BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Post, Query,
-  UnprocessableEntityException, UseGuards,
+  UnprocessableEntityException, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import { AdminGuard } from '../admin/admin.controller';
+import { Papeis, PapeisGuard } from '../auth/papeis.guard';
+import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantTransactionInterceptor } from '../auth/tenant-transaction.interceptor';
 
 /** Converte veto de trigger (flag de banco) em 422 legível. */
 export function traduzVeto(e: unknown): never {
   const msg = (e as { message?: string })?.message ?? 'Operação vetada.';
-  if (/RF-GEO-007|A11|RC-0\d|RF-IMG|RNF-10|RF-CAMPO-002/.test(msg)) {
+  if (/RF-GEO-007|A11|RC-0\d|RF-IMG|RNF-10|RF-CAMPO-002|ProdutoGeografico_tiles3d_metadata_check/.test(msg)) {
     throw new UnprocessableEntityException(msg);
   }
   throw e;
 }
 
 @Controller('admin/geo')
-@UseGuards(AdminGuard)
+@UseGuards(PapeisGuard, TenantContextGuard)
+@Papeis('ADMIN','CURADOR')
+@UseInterceptors(TenantTransactionInterceptor)
 export class GeoAdminController {
   constructor(private readonly db: DatabaseService, private readonly trilha: AuditoriaService) {}
 
@@ -49,9 +53,12 @@ export class GeoAdminController {
       const r = await this.db.query<{ id: number }>(
         `INSERT INTO "ProdutoGeografico"
           ("ProdutoGeografico_ProjetoId","ProdutoGeografico_Tipo","ProdutoGeografico_CaminhoObjeto",
-           "ProdutoGeografico_FormatoDownload","ProdutoGeografico_Classificacao")
-         VALUES ($1,$2,$3,$4,$5) RETURNING "ProdutoGeografico_Id" AS id`,
-        [d.projeto_id, d.tipo, d.caminho_objeto, d.formato ?? null, d.classificacao ?? 'PUBLICO'],
+           "ProdutoGeografico_FormatoDownload","ProdutoGeografico_Classificacao","ProdutoGeografico_TilesetUrl",
+           "ProdutoGeografico_BoundsWgs84","ProdutoGeografico_CrsOrigem","ProdutoGeografico_HashSha256")
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING "ProdutoGeografico_Id" AS id`,
+        [d.projeto_id, d.tipo, d.caminho_objeto, d.formato ?? null, d.classificacao ?? 'PUBLICO',
+         d.tileset_url ?? null, d.bounds_wgs84 ? JSON.stringify(d.bounds_wgs84) : null,
+         d.crs_origem ?? null, d.hash_sha256 ?? null],
       );
       return { id: r.rows[0].id, status: 'RASCUNHO' };
     } catch (e) { traduzVeto(e); }
@@ -113,6 +120,40 @@ export class GeoAdminController {
 export class GeoPublicoController {
   constructor(private readonly db: DatabaseService) {}
 
+  @Get('servico-gis/status')
+  async statusServicoGis() {
+    const url = process.env.GEOSERVER_HEALTH_URL?.trim();
+    if (!url) return { ok: true, modo: 'nativo', servico_externo: false };
+    try {
+      const resposta = await fetch(url, { signal: AbortSignal.timeout(3_000) });
+      if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
+      return { ok: true, modo: 'integrado', servico_externo: true };
+    } catch {
+      return {
+        ok: false, modo: 'degradado', servico_externo: true,
+        fallbacks: ['ogc-api-local', 'geojson-local', 'downloads'],
+      };
+    }
+  }
+
+  @Get('ativos')
+  async ativos(@Query('municipio') municipio?: string) {
+    const r = await this.db.query(
+      `SELECT "Ativo_Dominio" AS dominio,"Ativo_Id" AS id,"Ativo_Tipo" AS tipo,
+              "Ativo_CodigoIbge" AS codigo_ibge,"Ativo_Lifecycle" AS lifecycle,
+              "Ativo_Data"::text AS data,"Ativo_Origem" AS origem,"Ativo_Licenca" AS licenca,
+              "Ativo_ObjectKey" AS object_key,"Ativo_HashSha256" AS hash_sha256,
+              "Ativo_Versao" AS versao,"Ativo_Qualidade" AS qualidade,
+              "Ativo_Cobertura" AS cobertura,"Ativo_Processamento" AS processamento
+         FROM "AtivoMapeamento"
+        WHERE "Ativo_Lifecycle"='PUBLISHED'
+          AND ($1::char(7) IS NULL OR "Ativo_CodigoIbge"=$1)
+        ORDER BY "Ativo_CodigoIbge","Ativo_Dominio","Ativo_Id"`,
+      [municipio ?? null],
+    );
+    return r.rows;
+  }
+
   /** Só PUBLICO + PUBLICADO chega aqui — o resto o banco nem deixa publicar. */
   @Get('produtos')
   async produtos(@Query('municipio') municipio?: string) {
@@ -120,6 +161,10 @@ export class GeoPublicoController {
       `SELECT pg."ProdutoGeografico_Id" AS id, pg."ProdutoGeografico_Tipo" AS tipo,
               pg."ProdutoGeografico_FormatoDownload" AS formato,
               pg."ProdutoGeografico_CaminhoObjeto" AS caminho,
+              pg."ProdutoGeografico_TilesetUrl" AS tileset_url,
+              pg."ProdutoGeografico_BoundsWgs84" AS bounds_wgs84,
+              pg."ProdutoGeografico_CrsOrigem" AS crs_origem,
+              pg."ProdutoGeografico_HashSha256" AS hash_sha256,
               m."Municipio_Nome" AS municipio, m."Municipio_CodigoIbge" AS codigo_ibge,
               pl."ProjetoLevantamento_DataVoo"::text AS data_voo,
               pl."ProjetoLevantamento_Sensor" AS sensor, pl."ProjetoLevantamento_GsdCm" AS gsd_cm,

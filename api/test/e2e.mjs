@@ -11,7 +11,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 
-const PORT = 3901;
+// Porta fixa pode conectar silenciosamente a uma API antiga e produzir um
+// falso positivo/negativo. Cada processo de teste recebe uma porta isolada;
+// TEST_PORT continua disponível para depuração reproduzível.
+const PORT = Number(process.env.TEST_PORT ?? 20_000 + (process.pid % 20_000));
 const BASE = `http://localhost:${PORT}/v1`;
 const ADMIN = { Authorization: 'Bearer itmt-admin-dev', 'Content-Type': 'application/json' };
 let api;
@@ -22,6 +25,9 @@ before(async () => {
     stdio: 'ignore',
   });
   for (let i = 0; i < 40; i++) {
+    if (api.exitCode !== null) {
+      throw new Error(`API de teste encerrou prematuramente (exit ${api.exitCode}).`);
+    }
     try {
       const r = await fetch(`${BASE}/temas`);
       if (r.ok) return;
@@ -50,6 +56,16 @@ test('todo valor publicado carrega o quinteto de procedência (§12.1)', async (
       assert.match(p.hash, /^[0-9a-f]{64}$/, `hash inválido em ${url}`);
     }
   }
+});
+
+test('gate F1 expõe exatamente 12 indicadores e não aprova dado demonstrativo', async () => {
+  const r = await fetch(`${BASE}/transparencia/lancamento-f1`);
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.total, 12);
+  assert.equal(d.indicadores.length, 12);
+  assert.equal(d.aprovado, false);
+  assert.ok(d.indicadores.every((i) => typeof i.procedencia_ok === 'boolean'));
 });
 
 // ---------- 4. RN-003 ----------
