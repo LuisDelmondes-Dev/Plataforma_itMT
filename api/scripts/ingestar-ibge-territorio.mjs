@@ -17,16 +17,18 @@ import {
   pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar,
   verificarEsquema, quarentenar,
 } from './lib-ingest.mjs';
+import { carregarConfiguracaoRegional } from './regiao-config.mjs';
 
+const REGIAO = carregarConfiguracaoRegional();
 const URL_IBGE =
-  'https://servicodados.ibge.gov.br/api/v1/localidades/estados/51/municipios';
+  `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${REGIAO.codigoUfIbge}/municipios`;
 
 const db = pool();
 
 try {
   // 1) Fonte com base legal — sem isso o pipeline falha (RG-06)
   const fonteId = await registrarFonte(db, {
-    nome: 'IBGE — API de Localidades (municípios de MT)',
+    nome: `IBGE — API de Localidades (municípios de ${REGIAO.sigla})`,
     origem: 'Instituto Brasileiro de Geografia e Estatística',
     url: URL_IBGE,
     baseLegal: 'DADO_ABERTO',
@@ -47,7 +49,7 @@ try {
     console.log(`↓ Baixando ${URL_IBGE} …`);
     bruto = await baixar(URL_IBGE);
     ({ caminho, hash } = salvarBronze(
-      `ibge-municipios-mt-${new Date().toISOString().slice(0, 10)}.json`,
+      `ibge-municipios-${REGIAO.sigla.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`,
       bruto,
     ));
     console.log(`✓ Bronze gravado: ${caminho}`);

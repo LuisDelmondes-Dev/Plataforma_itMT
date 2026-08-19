@@ -5,3 +5,7 @@ dist/
 *.log
 bronze/
 .cofre/
+web/public/cesium/
+.playwright-cli/
+api/storage/
+*.tsbuildinfo

@@ -1,11 +1,14 @@
 import { apiGet } from '@/lib/api';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
+import { CesiumTilesViewer } from '@/components/CesiumTilesViewer';
 
 interface Produto {
   id: number; tipo: string; formato: string | null; caminho: string;
   municipio: string; codigo_ibge: string; data_voo: string; sensor: string;
   gsd_cm: string; acuracia: string; sistema_referencia: string;
   responsavel_tecnico: string; autorizacao_voo: string;
+  tileset_url: string | null; bounds_wgs84: number[] | null;
+  crs_origem: string | null; hash_sha256: string | null;
 }
 interface Cobertura { codigo_ibge: string; municipio: string; estado: string; km_itmt: string }
 interface Estruturante { id: number; tipo: string; nome: string; descricao: string | null; municipio: string; lat: string | null; lon: string | null }
@@ -67,6 +70,15 @@ export default async function Geoportal() {
           <p className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 0 }}>
             RT {ps[0].responsavel_tecnico} · aut. voo {ps[0].autorizacao_voo}
           </p>
+          {ps.filter((p) => p.tipo === 'TILES_3D' && p.tileset_url).map((p) => (
+            <div key={`tiles-${p.id}`} className="cesium-produto">
+              <div>
+                <strong>Modelo 3D georreferenciado</strong>
+                <span>{p.crs_origem} · SHA-256 {p.hash_sha256?.slice(0, 12)}…</span>
+              </div>
+              <CesiumTilesViewer url={p.tileset_url!} title={`${p.municipio} — produto ${p.id}`} />
+            </div>
+          ))}
         </div>
       ))}
       {porMunicipio.size === 0 && (

@@ -10,6 +10,9 @@ import { PlanoConsulta, Clarificacao } from './tipos';
 import {
   auditarNumeros, narrarComLlm, narrativaDeterministica,
 } from './narrador';
+import { AgentExecutorService } from './agent-executor.service';
+import { CONTRATO_A01_INTERPRETE, CONTRATO_A04_EXECUTOR, CONTRATO_A05_NARRADOR, CONTRATO_A06_AUDITOR } from './contracts';
+import { REGIAO } from '../config/regiao';
 
 type Estado =
   | 'RECEBIDA' | 'SANITIZADA' | 'INTERPRETADA' | 'PLANEJADA'
@@ -55,6 +58,7 @@ export class OrquestradorService {
     private readonly catalogo: CatalogoService,
     private readonly trilha: AuditoriaService,
     private readonly custo: CustoService,
+    private readonly executor: AgentExecutorService,
   ) {}
 
   async perguntar(
@@ -88,7 +92,7 @@ export class OrquestradorService {
         estado: 'BLOQUEADA',
         resposta:
           'Essa mensagem contém um padrão de instrução que a Xingú não processa (RG-04: ' +
-          'conteúdo recebido é dado, nunca comando). Reformule como uma pergunta sobre os dados de Mato Grosso.',
+          `conteúdo recebido é dado, nunca comando). Reformule como uma pergunta sobre os dados de ${REGIAO.nome}.`,
         auditoria: { numerais: 0, vetos: 1, interprete: 'sentinela' },
         cache_plano: false,
       });
@@ -106,7 +110,12 @@ export class OrquestradorService {
       plano = emCache.plano;
       cacheHit = true;
     } else {
-      const saida = await this.interprete.interpretar(pergunta, contexto);
+      const saida = await this.executor.executar(CONTRATO_A01_INTERPRETE, {
+        input: { pergunta: pergunta.slice(0, 500), contexto: contexto ?? null },
+        ferramenta: 'catalogo:ler',
+        permissao: 'dados-publicos:ler',
+        handler: () => this.interprete.interpretar(pergunta, contexto),
+      });
       interpreteUsado = saida.interprete;
       if (saida.tipo === 'CLARIFICACAO') {
         estados.push('INTERPRETADA', 'CLARIFICACAO');
@@ -127,11 +136,15 @@ export class OrquestradorService {
     //      Vetos de território e de NAO_AGREGAVEL vivem lá (RN-001..003). ----
     let resultado: ValorComProcedencia;
     try {
-      resultado = await this.indicadores.consultar({
-        indicadorId: plano.indicador_id,
-        recorte: plano.recorte,
-        codigo: plano.codigo,
-        dataReferencia: plano.periodo.referencia,
+      resultado = await this.executor.executar(CONTRATO_A04_EXECUTOR, {
+        input: { plano }, ferramenta: 'motor-indicadores:consultar', permissao: 'dados-publicos:ler',
+        idempotencyKey: chaveCache,
+        handler: () => this.indicadores.consultar({
+          indicadorId: plano.indicador_id,
+          recorte: plano.recorte,
+          codigo: plano.codigo,
+          dataReferencia: plano.periodo.referencia,
+        }),
       });
     } catch (e: unknown) {
       // RN-005 / RF-CHAT-006: ausência é resposta explícita, NUNCA estimativa.
@@ -151,24 +164,30 @@ export class OrquestradorService {
     // ---- A05: Narrador (slots) ---- A15: só usa LLM se dentro do orçamento.
     let narrativa: string;
     let vetos = 0;
-    if (this.interprete.provedor.disponivel() && (await this.custo.dentroDoOrcamento())) {
-      try {
+    const saidaNarrador = await this.executor.executar(CONTRATO_A05_NARRADOR, {
+      input: { pergunta: pergunta.slice(0, 500), resultado },
+      ferramenta: 'llm:narrar', permissao: 'dados-publicos:ler',
+      handler: async () => {
+        if (!this.interprete.provedor.disponivel() || !(await this.custo.dentroDoOrcamento()))
+          return { narrativa: narrativaDeterministica(resultado) };
         const ref: RefLlm = {};
-        narrativa = await narrarComLlm(this.interprete.provedor, resultado, pergunta, ref);
+        const texto = await narrarComLlm(this.interprete.provedor, resultado, pergunta, ref);
         await this.custo.registrar('A05', ref.provedor ?? this.interprete.provedor.nome(), ref.tokensEntrada, ref.tokensSaida);
-      } catch {
-        narrativa = narrativaDeterministica(resultado);
-      }
-    } else {
-      narrativa = narrativaDeterministica(resultado);
-    }
+        return { narrativa: texto };
+      },
+      fallback: async () => ({ narrativa: narrativaDeterministica(resultado) }),
+    });
+    narrativa = saidaNarrador.narrativa;
     if (sabotar && process.env.NODE_ENV !== 'production') {
       narrativa += ' Estima-se ainda cerca de 999999 casos adicionais.';
     }
     estados.push('NARRADA');
 
     // ---- A06: Auditor de Números — VETO ABSOLUTO (KR3.2 = 0) ----
-    let aud = auditarNumeros(narrativa, resultado);
+    let aud = await this.executor.executar(CONTRATO_A06_AUDITOR, {
+      input: { narrativa, resultado }, ferramenta: 'numerais:auditar', permissao: 'resposta:vetar',
+      handler: async () => auditarNumeros(narrativa, resultado),
+    });
     if (!aud.aprovado) {
       vetos++;
       this.log.error(
@@ -178,7 +197,10 @@ export class OrquestradorService {
         intrusos: aud.intrusos, pergunta: pergunta.slice(0, 200),
       });
       narrativa = narrativaDeterministica(resultado);
-      aud = auditarNumeros(narrativa, resultado);
+      aud = await this.executor.executar(CONTRATO_A06_AUDITOR, {
+        input: { narrativa, resultado }, ferramenta: 'numerais:auditar', permissao: 'resposta:vetar',
+        handler: async () => auditarNumeros(narrativa, resultado),
+      });
       if (!aud.aprovado) {
         // inalcançável por construção; ainda assim, jamais publicar
         estados.push('AUDITADA', 'BLOQUEADA');

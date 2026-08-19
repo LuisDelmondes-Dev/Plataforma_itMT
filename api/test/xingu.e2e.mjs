@@ -6,6 +6,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import pg from 'pg';
 
 const PORT = 3902;
 const BASE = `http://localhost:${PORT}/v1`;
@@ -72,6 +73,15 @@ test('RF-CHAT-006 / RN-005: dado inexistente responde ausência, nunca estima', 
   assert.match(d.resposta, /referência mais recente/);
 });
 
+test('caso de referência: estrada vicinal é reconhecida e ausência nunca vira estimativa', async () => {
+  const d = await perguntar('Quantos km de estrada vicinal existem em Mato Grosso?');
+  assert.equal(d.estado, 'SEM_DADO');
+  assert.equal(d.plano.recorte, 'ESTADO');
+  assert.match(d.resposta, /Extensão de estradas vicinais/);
+  assert.match(d.resposta, /não há dado publicado/i);
+  assert.ok(!/\b\d+(?:[.,]\d+)?\s*km\b/i.test(d.resposta), 'não pode inventar quilometragem');
+});
+
 test('RN-002/003 via chat: taxa de consórcio é recalculada (92,5%), nunca somada', async () => {
   const d = await perguntar('Qual a cobertura vacinal no consórcio Teles Pires?');
   assert.equal(d.estado, 'RESPONDIDA');
@@ -99,4 +109,26 @@ test('RG-01: a máquina de estados percorre o caminho completo', async () => {
     d.estados_percorridos,
     ['RECEBIDA', 'SANITIZADA', 'INTERPRETADA', 'PLANEJADA', 'EXECUTADA', 'NARRADA', 'AUDITADA', 'RESPONDIDA'],
   );
+});
+
+test('contratos A01/A04/A05/A06 registram cada etapa do pipeline', async () => {
+  await perguntar('População de Cuiabá?');
+  const cliente = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await cliente.connect();
+  try {
+    const r = await cliente.query(
+      `SELECT "AgentExecution_Agente" AS agente, bool_or("AgentExecution_Ok") AS ok
+         FROM "AgentExecution"
+        WHERE "AgentExecution_Agente" IN
+          ('xingu-a01-interprete@1.0.0','xingu-a04-executor@1.0.0','xingu-a05-narrador@1.0.0','xingu-a06-auditor@1.0.0')
+        GROUP BY "AgentExecution_Agente"`,
+    );
+    assert.deepEqual(new Set(r.rows.map((x) => x.agente)), new Set([
+      'xingu-a01-interprete@1.0.0','xingu-a04-executor@1.0.0',
+      'xingu-a05-narrador@1.0.0','xingu-a06-auditor@1.0.0',
+    ]));
+    assert.ok(r.rows.every((x) => x.ok));
+  } finally {
+    await cliente.end();
+  }
 });

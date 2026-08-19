@@ -1,14 +1,22 @@
 import Link from 'next/link';
+import Image from 'next/image';
+import { REGIAO } from '@/lib/regiao';
 
 export default function Home() {
   return (
     <div style={{ maxWidth: 760, margin: '48px auto', textAlign: 'center' }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         className="hero-logo"
         src="/itmt-horizontal.png"
-        alt="Plataforma itMT — inteligência territorial Mato Grosso"
+        alt={`Plataforma itMT — inteligência territorial ${REGIAO.nome}`}
+        width={1434}
+        height={542}
+        sizes="(max-width: 760px) 90vw, 700px"
+        priority
       />
+      <h1 style={{ margin: '20px 0 0', fontSize: 'clamp(1.4rem, 3vw, 2rem)' }}>
+        Inteligência Territorial de {REGIAO.nome}
+      </h1>
 
       <form
         action="/consulta"

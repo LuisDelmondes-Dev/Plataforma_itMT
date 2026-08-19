@@ -55,7 +55,8 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 }
 
 /** Ficha completa do §6 do prompt mestre — campo a campo, com procedência. */
-export default async function FichaDireito({ params }: { params: { id: string } }) {
+export default async function FichaDireito(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const d = await apiGet<Ficha>(`/direitos/${params.id}`).catch(() => null);
   if (!d) notFound();
   const c = CONFIANCA[d.confianca] ?? CONFIANCA.NECESSITA_CONFIRMACAO;

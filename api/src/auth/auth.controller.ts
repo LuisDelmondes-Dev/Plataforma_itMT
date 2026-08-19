@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Papeis, PapeisGuard } from './papeis.guard';
-import { Papel } from './token';
+import { Papel, Sessao } from './token';
 
 interface LoginDto {
   email: string;
@@ -12,6 +12,7 @@ interface UsuarioDto {
   senha: string;
   papel: Papel;
 }
+interface ContextoDto { organization_id: string }
 
 const PAPEIS_VALIDOS: Papel[] = ['ADMIN', 'CURADOR', 'PUBLICO', 'PARCEIRO', 'UNIVERSIDADE'];
 
@@ -26,6 +27,20 @@ export class AuthController {
       throw new BadRequestException('Envie { email, senha }.');
     }
     return this.auth.login(dto.email, dto.senha);
+  }
+
+  @Get('organizacoes')
+  @UseGuards(PapeisGuard)
+  listarOrganizacoes(@Req() req: { usuario: Sessao }) {
+    return this.auth.listarOrganizacoes(req.usuario.sub);
+  }
+
+  @Post('contexto')
+  @UseGuards(PapeisGuard)
+  selecionarContexto(@Req() req: { usuario: Sessao }, @Body() dto: ContextoDto) {
+    if (!dto?.organization_id || typeof dto.organization_id !== 'string')
+      throw new BadRequestException('Envie { organization_id }.');
+    return this.auth.selecionarContexto(req.usuario, dto.organization_id);
   }
 
   /** Criação de conta (parceiro/universidade/curador) — só ADMIN. */

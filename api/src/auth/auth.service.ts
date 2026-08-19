@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { conferirSenha, gerarHashSenha } from './senha';
-import { emitirToken, Papel } from './token';
+import { emitirToken, Papel, Sessao } from './token';
 
 /**
  * Identidade e RBAC (RF012). Emite tokens de sessão assinados a partir de
@@ -26,14 +26,18 @@ export class AuthService implements OnModuleInit {
           'ADMIN_SENHA_INICIAL não definida — criando admin com senha de desenvolvimento. Defina e rotacione em produção.',
         );
       }
-      await this.db.query(
+      const criado = await this.db.query<{ id: string }>(
         `INSERT INTO "Usuario" ("Usuario_Email","Usuario_SenhaHash","Usuario_Papel")
-         VALUES ($1,$2,'ADMIN') ON CONFLICT ("Usuario_Email") DO NOTHING`,
+         VALUES ($1,$2,'ADMIN') ON CONFLICT ("Usuario_Email") DO UPDATE SET "Usuario_Ativo"=true
+         RETURNING "Usuario_Id"::text AS id`,
         [email, gerarHashSenha(senha)],
       );
+      if (criado.rows[0]) await this.db.query(`SELECT "GarantirMembroPlataforma"($1)`, [criado.rows[0].id]);
       this.log.log(`Admin inicial garantido: ${email}`);
     } catch (e) {
-      // Banco sem a migração 11 ainda (ex.: ambiente legado) — não derruba a API.
+      // Produção é fail-closed: API sem identidade funcional não pode parecer saudável.
+      if (process.env.NODE_ENV === 'production') throw e;
+      // Banco sem a migração 11 ainda (ex.: ambiente legado de desenvolvimento).
       this.log.warn(`bootstrap de admin ignorado: ${(e as Error).message}`);
     }
   }
@@ -67,6 +71,59 @@ export class AuthService implements OnModuleInit {
        RETURNING "Usuario_Id" AS id`,
       [email, gerarHashSenha(senha), papel],
     );
+    await this.db.query(`SELECT "GarantirMembroPlataforma"($1)`, [r.rows[0].id]);
     return { id: r.rows[0].id };
+  }
+
+  private async usuarioId(email: string): Promise<string> {
+    const r = await this.db.query<{ id: string }>(
+      `SELECT "Usuario_Id"::text AS id FROM "Usuario" WHERE "Usuario_Email"=$1 AND "Usuario_Ativo"`,
+      [email],
+    );
+    if (!r.rows[0]) throw new UnauthorizedException('Sessão sem identidade ativa.');
+    return r.rows[0].id;
+  }
+
+  async listarOrganizacoes(email: string) {
+    const userId = await this.usuarioId(email);
+    return this.db.withIdentityTransaction(userId, async (client) => {
+      const r = await client.query(
+        `SELECT m."OrganizacaoMembro_TenantId"::text AS tenant_id,
+                m."OrganizacaoMembro_OrganizacaoId"::text AS organization_id,
+                o."Organizacao_Slug" AS slug, o."Organizacao_Nome" AS nome,
+                m."OrganizacaoMembro_Papel" AS papel,
+                m."OrganizacaoMembro_Versao"::int AS membership_version
+           FROM "OrganizacaoMembro" m
+           JOIN "Organizacao" o
+             ON o."Organizacao_TenantId"=m."OrganizacaoMembro_TenantId"
+            AND o."Organizacao_Id"=m."OrganizacaoMembro_OrganizacaoId"
+          WHERE m."OrganizacaoMembro_UsuarioId"=$1
+            AND m."OrganizacaoMembro_Status"='ATIVO' AND o."Organizacao_Status"='ATIVA'
+          ORDER BY o."Organizacao_Nome"`,
+        [userId],
+      );
+      return r.rows;
+    });
+  }
+
+  async selecionarContexto(sessao: Sessao, organizationId: string) {
+    const organizacoes = await this.listarOrganizacoes(sessao.sub) as Array<{
+      tenant_id: string; organization_id: string; membership_version: number; papel: string;
+    }>;
+    const organizacao = organizacoes.find((item) => item.organization_id === organizationId);
+    if (!organizacao) throw new UnauthorizedException('Organização indisponível para esta identidade.');
+    const userId = await this.usuarioId(sessao.sub);
+    const ttl = sessao.papel === 'PARCEIRO' || sessao.papel === 'UNIVERSIDADE' ? 4 * 3600 : 8 * 3600;
+    return {
+      token: emitirToken(sessao.sub, sessao.papel, ttl, {
+        uid: userId,
+        tid: organizacao.tenant_id,
+        oid: organizacao.organization_id,
+        membershipVersion: organizacao.membership_version,
+      }),
+      organization_id: organizacao.organization_id,
+      tenant_id: organizacao.tenant_id,
+      membership_papel: organizacao.papel,
+    };
   }
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { REGIAO } from '@/lib/regiao';
 
 interface Citacao {
   fonte: string;
@@ -117,7 +118,7 @@ export default function Xingu() {
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div className="overline">IA Xingú</div>
       <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Pergunte aos dados de Mato Grosso
+        Pergunte aos dados de {REGIAO.nome}
       </h1>
       <p style={{ color: 'var(--ink-2)' }}>
         A Xingú traduz a sua pergunta em um plano de consulta — exibido antes da resposta —
@@ -142,7 +143,7 @@ export default function Xingu() {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
               {[
                 'Quantos leitos de UTI existem em Cuiabá?',
-                'Qual a população de Mato Grosso?',
+                `Qual a população de ${REGIAO.nome}?`,
                 'Cobertura vacinal no consórcio Teles Pires',
               ].map((s) => (
                 <button key={s} className="btn" onClick={() => perguntar(s)}>{s}</button>

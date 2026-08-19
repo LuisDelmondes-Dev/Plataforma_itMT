@@ -27,7 +27,7 @@ export class PapeisGuard implements CanActivate {
     const esperado = process.env.ADMIN_TOKEN ?? 'itmt-admin-dev';
     const a = createHash('sha256').update(token).digest();
     const b = createHash('sha256').update(esperado).digest();
-    if (timingSafeEqual(a, b)) {
+    if (process.env.NODE_ENV !== 'production' && timingSafeEqual(a, b)) {
       req.usuario = { sub: 'admin-token', papel: 'ADMIN' as Papel };
       return permitidos.length === 0 || permitidos.includes('ADMIN');
     }

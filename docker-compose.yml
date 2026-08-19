@@ -2,7 +2,7 @@
 # sobe: PostgreSQL 16 com DDL+seed, API NestJS e Web Next.js
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
     environment:
       POSTGRES_USER: itmt
       POSTGRES_PASSWORD: itmt
@@ -16,6 +16,22 @@ services:
       - ./db/05-seed-f3.sql:/docker-entrypoint-initdb.d/05-seed-f3.sql:ro
       - ./db/06-f4.sql:/docker-entrypoint-initdb.d/06-f4.sql:ro
       - ./db/07-seed-f4.sql:/docker-entrypoint-initdb.d/07-seed-f4.sql:ro
+      - ./db/08-seguranca.sql:/docker-entrypoint-initdb.d/08-seguranca.sql:ro
+      - ./db/09-agro.sql:/docker-entrypoint-initdb.d/09-agro.sql:ro
+      - ./db/10-custo.sql:/docker-entrypoint-initdb.d/10-custo.sql:ro
+      - ./db/11-auth.sql:/docker-entrypoint-initdb.d/11-auth.sql:ro
+      - ./db/12-hardening-serie.sql:/docker-entrypoint-initdb.d/12-hardening-serie.sql:ro
+      - ./db/13-ambiente.sql:/docker-entrypoint-initdb.d/13-ambiente.sql:ro
+      - ./db/14-parceiros.sql:/docker-entrypoint-initdb.d/14-parceiros.sql:ro
+      - ./db/15-agro-pecuaria.sql:/docker-entrypoint-initdb.d/15-agro-pecuaria.sql:ro
+      - ./db/16-saude-internacao.sql:/docker-entrypoint-initdb.d/16-saude-internacao.sql:ro
+      - ./db/17-integridade-territorial.sql:/docker-entrypoint-initdb.d/17-integridade-territorial.sql:ro
+      - ./db/18-f1-estradas-vicinais.sql:/docker-entrypoint-initdb.d/18-f1-estradas-vicinais.sql:ro
+      - ./db/19-f1-pacote-lancamento.sql:/docker-entrypoint-initdb.d/19-f1-pacote-lancamento.sql:ro
+      - ./db/20-f1-educacao-api-ibge.sql:/docker-entrypoint-initdb.d/20-f1-educacao-api-ibge.sql:ro
+      - ./db/21-f2-documentos-rag.sql:/docker-entrypoint-initdb.d/21-f2-documentos-rag.sql:ro
+      - ./db/22-f2-seguranca-vetores.sql:/docker-entrypoint-initdb.d/22-f2-seguranca-vetores.sql:ro
+      - ./db/23-f2-api-parceiros.sql:/docker-entrypoint-initdb.d/23-f2-api-parceiros.sql:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U itmt"]
@@ -32,9 +48,27 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       XINGU_MODELO: ${XINGU_MODELO:-claude-haiku-4-5}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-itmt-admin-dev}
+      DOCUMENTOS_STORAGE_ROOT: /app/storage/documentos
+      DOCUMENTOS_WORKER: "1"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-disabled}
+      EMBEDDINGS_URL: ${EMBEDDINGS_URL:-https://api.openai.com/v1/embeddings}
+      EMBEDDINGS_MODELO: ${EMBEDDINGS_MODELO:-text-embedding-3-small}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports: ["3001:3001"]
+    volumes:
+      - documentos:/app/storage/documentos
     depends_on:
       db: { condition: service_healthy }
+      clamav: { condition: service_started }
+
+  clamav:
+    image: clamav/clamav:1.5
+    volumes:
+      - clamav_data:/var/lib/clamav
+    expose: ["3310"]
+    restart: unless-stopped
 
   web:
     build: ./web
@@ -55,3 +89,5 @@ services:
 
 volumes:
   pgdata:
+  documentos:
+  clamav_data:

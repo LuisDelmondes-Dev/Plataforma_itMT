@@ -7,7 +7,17 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  * (fallback ADMIN_TOKEN em dev). A troca do segredo invalida todos os tokens.
  */
 export type Papel = 'ADMIN' | 'CURADOR' | 'PUBLICO' | 'PARCEIRO' | 'UNIVERSIDADE';
-export interface Sessao { sub: string; papel: Papel; exp: number }
+export interface Sessao {
+  sub: string;
+  papel: Papel;
+  exp: number;
+  uid?: string;
+  tid?: string;
+  oid?: string;
+  membershipVersion?: number;
+}
+
+export type ContextoSessao = Required<Pick<Sessao, 'uid' | 'tid' | 'oid' | 'membershipVersion'>>;
 
 function segredo(): string {
   return process.env.SESSION_SECRET ?? process.env.ADMIN_TOKEN ?? 'itmt-sessao-dev';
@@ -15,8 +25,16 @@ function segredo(): string {
 
 const b64url = (b: Buffer) => b.toString('base64url');
 
-export function emitirToken(sub: string, papel: Papel, ttlSegundos = 8 * 3600): string {
-  const payload: Sessao = { sub, papel, exp: Math.floor(Date.now() / 1000) + ttlSegundos };
+export function emitirToken(
+  sub: string,
+  papel: Papel,
+  ttlSegundos = 8 * 3600,
+  contexto?: ContextoSessao,
+): string {
+  const payload: Sessao = {
+    sub, papel, exp: Math.floor(Date.now() / 1000) + ttlSegundos,
+    ...(contexto ?? {}),
+  };
   const corpo = b64url(Buffer.from(JSON.stringify(payload)));
   const assinatura = b64url(createHmac('sha256', segredo()).update(corpo).digest());
   return `${corpo}.${assinatura}`;

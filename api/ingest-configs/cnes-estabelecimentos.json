@@ -1,0 +1,20 @@
+{
+  "fonte": {
+    "nome": "CNES/DATASUS — Estabelecimentos de saúde ativos",
+    "origem": "Ministério da Saúde — Cadastro Nacional de Estabelecimentos de Saúde",
+    "url": "https://cnes.datasus.gov.br/pages/estabelecimentos/consulta.jsp",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Informações de Saúde — DATASUS (Lei 12.527/2011)",
+    "periodicidade": "MENSAL"
+  },
+  "indicador": {
+    "nome": "Estabelecimentos de saúde ativos",
+    "unidade": "estabelecimentos",
+    "tipoAgregacao": "SOMA",
+    "subtemaNome": "Estabelecimentos de saúde"
+  },
+  "colunas": { "codigoIbge": "codigo_ibge", "valor": "valor" },
+  "dataReferencia": "2026-06-28",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

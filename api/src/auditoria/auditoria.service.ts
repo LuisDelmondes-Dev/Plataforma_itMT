@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
+import { DatabaseService, TenantContext } from '../database/database.service';
+import { PoolClient } from 'pg';
 
 /**
  * Trilha de auditoria INSERT-ONLY com encadeamento SHA-256 (RG-10 / RF-ADMIN-005).
@@ -16,14 +17,21 @@ export class AuditoriaService {
     entidade: string,
     entidadeId: string,
     payload: Record<string, unknown>,
+    contexto?: TenantContext,
   ): Promise<void> {
-    const payloadCanonico = JSON.stringify(payload, Object.keys(payload).sort());
     // Serialização por advisory lock: garante encadeamento sem corrida.
     // Cliente dedicado via withClient (sem acessar o pool privado).
     try {
-      await this.db.withClient(async (client) => {
-        await client.query('BEGIN');
+      const gravar = async (client: PoolClient, gerenciaTransacao: boolean) => {
+        if (gerenciaTransacao) await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock(842001)');
+        const escopo = await client.query<{ tid: string | null; oid: string | null }>(
+          `SELECT "ContextoTenant_Id"()::text AS tid,"ContextoOrganizacao_Id"()::text AS oid`,
+        );
+        const tid = escopo.rows[0]?.tid ?? null;
+        const oid = escopo.rows[0]?.oid ?? null;
+        const payloadEscopado = tid && oid ? { ...payload, _tenant_id: tid, _organization_id: oid } : payload;
+        const payloadCanonico = JSON.stringify(payloadEscopado, Object.keys(payloadEscopado).sort());
         const ult = await client.query(
           `SELECT "EventoAuditoria_HashAtual" AS h FROM "EventoAuditoria"
             ORDER BY "EventoAuditoria_Id" DESC LIMIT 1`,
@@ -37,17 +45,25 @@ export class AuditoriaService {
             `INSERT INTO "EventoAuditoria"
                ("EventoAuditoria_Ator","EventoAuditoria_Acao","EventoAuditoria_Entidade",
                 "EventoAuditoria_EntidadeId","EventoAuditoria_Payload",
-                "EventoAuditoria_HashAnterior","EventoAuditoria_HashAtual")
+                "EventoAuditoria_HashAnterior","EventoAuditoria_HashAtual",
+                "EventoAuditoria_TenantId","EventoAuditoria_OrganizacaoId")
              VALUES ($1,$2,$3,$4,$5::jsonb,$6::text,
-                     encode(sha256(($6::text || ($5::jsonb)::text)::bytea),'hex'))`,
-            [ator, acao, entidade, entidadeId, payloadCanonico, hashAnterior],
+                     encode(sha256(($6::text || ($5::jsonb)::text)::bytea),'hex'),$7,$8)`,
+            [ator, acao, entidade, entidadeId, payloadCanonico, hashAnterior, tid, oid],
           );
-          await client.query('COMMIT');
+          if (gerenciaTransacao) await client.query('COMMIT');
         } catch (e) {
-          await client.query('ROLLBACK');
+          if (gerenciaTransacao) await client.query('ROLLBACK');
           throw e;
         }
-      });
+      };
+      const executar = async () => {
+        const atual = this.db.currentTransactionClient();
+        if (atual) return gravar(atual, false);
+        return this.db.withClient((client) => gravar(client, true));
+      };
+      if (contexto && !this.db.currentTransactionClient()) await this.db.withTenantTransaction(contexto, executar);
+      else await executar();
     } catch (e) {
       // Auditoria não pode derrubar a consulta pública; falha é logada e alertada
       // (em produção: métrica + alerta, RNF-11)

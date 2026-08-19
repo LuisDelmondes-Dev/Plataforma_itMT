@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet } from '@/lib/api';
+import { REGIAO } from '@/lib/regiao';
 
 interface Destaque { id: number; nome: string; unidade: string; tema: string }
 interface LinhaMapa { codigo_ibge: string; valor: number; data_referencia: string; fonte: string }
@@ -176,7 +177,7 @@ export default function PaginaMapa() {
           <svg
             viewBox={`0 0 ${VB_L} ${proj.vbAlt.toFixed(0)}`}
             role="img"
-            aria-label={dados ? `Mapa de ${dados.indicador} por município` : 'Mapa de Mato Grosso'}
+            aria-label={dados ? `Mapa de ${dados.indicador} por município` : `Mapa de ${REGIAO.nome}`}
             style={{ width: '100%', height: 'auto', display: 'block' }}
           >
             {features.map((f) => {

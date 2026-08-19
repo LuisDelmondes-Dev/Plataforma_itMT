@@ -9,6 +9,11 @@ RUN npm run build
 FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils tesseract-ocr tesseract-ocr-por \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/storage/documentos \
+    && chown -R node:node /app/storage
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
@@ -17,5 +22,5 @@ COPY ingest-configs ./ingest-configs
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=15s --timeout=3s --retries=5 \
-  CMD node -e "fetch('http://localhost:3001/v1/saude').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://localhost:3001/v1/saude/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 CMD ["node", "dist/main.js"]

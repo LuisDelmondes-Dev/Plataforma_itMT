@@ -3,6 +3,7 @@ import { CatalogoService, InterpreteLexico, SaidaInterprete, normalizar } from '
 import { validarPlano } from './tipos';
 import { envelopar } from './sentinela';
 import { CustoService } from './custo.service';
+import { REGIAO } from '../config/regiao';
 
 /** Versão do prompt — registrada na trilha de toda resposta (RF-CHAT-009). */
 export const PROMPT_VERSAO = 'xingu-interprete-v1.0';
@@ -188,7 +189,7 @@ export class InterpreteService {
   ): Promise<SaidaInterprete | null> {
     const cat = await this.catalogo.obter();
     const sistema = [
-      'Você converte perguntas sobre municípios de Mato Grosso em um plano de consulta JSON.',
+      `Você converte perguntas sobre municípios de ${REGIAO.nome} em um plano de consulta JSON.`,
       'Responda APENAS com JSON válido, sem markdown, em UMA das duas formas:',
       '{"acao":"CONSULTAR","recorte":"ESTADO|MUNICIPIO|RGINT|RGI|CONSORCIO","codigo":"<código ou null>","indicador_id":<int>,"periodo":{"referencia":"AAAA-MM-DD"}}',
       'ou, se faltar local ou indicador: {"clarificar":{"pergunta":"...","opcoes":[{"rotulo":"...","pergunta_sugerida":"..."}]}} (máximo 2 opções).',

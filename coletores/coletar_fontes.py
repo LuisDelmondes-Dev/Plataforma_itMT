@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlencode
 
-import certifi
+import truststore
 import pandas as pd
 import psycopg
 import requests
@@ -43,11 +43,16 @@ UF_MT, TIMEOUT = "51", 90
 
 log = logging.getLogger("coletores")
 
+# Usa o repositório de certificados do sistema operacional. Necessário em
+# redes institucionais com CA corporativa e mais seguro que desabilitar TLS.
+truststore.inject_into_ssl()
+
 
 def _sessao() -> requests.Session:
     """Sessão HTTP resiliente: CAs do certifi + retry para endpoints gov instáveis."""
     s = requests.Session()
-    s.verify = certifi.where()  # cadeia de CAs confiável (evita SSLError do INEP)
+    # truststore usa a cadeia do SO; REQUESTS_CA_BUNDLE permite CA dedicada no contêiner.
+    s.verify = os.environ.get("REQUESTS_CA_BUNDLE", True)
     s.headers["User-Agent"] = "ITMT-coletor/1.0 (+dados abertos)"
     retry = Retry(total=4, backoff_factor=1.5,
                   status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET", "POST"))
@@ -63,8 +68,8 @@ _http = _sessao()
 def fetch_inep(ano: int | None = None) -> tuple[date, pd.DataFrame]:
     """Sinopse da Educação Básica: matrículas por município (MT, rede pública)."""
     ano = ano or date.today().year - 1
-    base = "https://download.inep.gov.br/dados_abertos/sinopses_estatisticas/sinopses_educacao_basica"
-    r = _http.get(f"{base}/sinopse_estatistica_da_educacao_basica_{ano}.zip", timeout=TIMEOUT)
+    base = "https://download.inep.gov.br/dados_abertos/sinopses_estatisticas"
+    r = _http.get(f"{base}/sinopse_estatistica_censo_escolar_{ano}.zip", timeout=TIMEOUT)
     r.raise_for_status()
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         xlsx = next(n for n in z.namelist() if n.lower().endswith(".xlsx"))
@@ -142,6 +147,40 @@ def fetch_cnes(competencia: str | None = None) -> tuple[date, pd.DataFrame]:
     raise RuntimeError("CNES: TabNet não gerou CSV com dados — ver README.")
 
 
+def fetch_cnes_estabelecimentos(competencia: str | None = None) -> tuple[date, pd.DataFrame]:
+    """Quantidade de estabelecimentos de saúde ativos por município gestor."""
+    definicao = "cnes/cnv/estabmt.def"
+    form = html.fromstring(
+        _http.get(f"{CNES_HOST}/cgi/deftohtm.exe?{definicao}", timeout=TIMEOUT).text
+    ).xpath("//form")[0]
+    campos = {}
+    for s in form.xpath(".//select"):
+        nome, vals = s.get("name"), [o.get("value") for o in s.xpath("./option")]
+        if nome:
+            campos[nome] = "TODAS_AS_CATEGORIAS__" if "TODAS_AS_CATEGORIAS__" in vals else (vals[0] if vals else "")
+    arquivos = [o.get("value") for o in form.xpath(".//select[@name='Arquivos']/option")]
+    if competencia:
+        arquivos = [a for a in arquivos if competencia in a] or arquivos[:1]
+    for arq in arquivos[:4]:
+        campos.update({"Linha": "Município_gestor", "Coluna": "--Não-Ativa--",
+                       "Incremento": "Quantidade", "Arquivos": arq})
+        res = _http.post(f"{CNES_HOST}/cgi/tabcgi.exe?{definicao}",
+                         data=urlencode(campos, encoding="latin-1").encode("latin-1"),
+                         headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=TIMEOUT)
+        links = html.fromstring(res.text).xpath("//a[contains(@href,'.csv')]/@href")
+        if not links:
+            continue
+        csv = _http.get(CNES_HOST + links[0], timeout=TIMEOUT)
+        csv.encoding = "latin-1"
+        df = _parse_tabnet_csv(csv.text)
+        if not df.empty:
+            m = re.search(r"(\d{2})(\d{2})", arq)
+            ref = date(2000 + int(m.group(1)), int(m.group(2)), 28) if m else date.today()
+            log.info("cnes-estabelecimentos: %s (%d municípios)", arq, len(df))
+            return ref, df
+    raise RuntimeError("CNES estabelecimentos: TabNet não gerou CSV com dados.")
+
+
 # ---------------------------------------------------------------- utilidades
 def _coluna(df: pd.DataFrame, *pistas: str) -> str:
     for pista in pistas:
@@ -199,6 +238,10 @@ class Coletor:
 
 COLETORES = {
     "cnes": Coletor("cnes", "cnes-internacao.json", "Leitos de internação", fetch_cnes),
+    "cnes-estabelecimentos": Coletor(
+        "cnes-estabelecimentos", "cnes-estabelecimentos.json",
+        "Estabelecimentos de saúde ativos", fetch_cnes_estabelecimentos,
+    ),
     "inep": Coletor("inep", "inep-matriculas.json", "Matrículas na rede pública", fetch_inep),
 }
 

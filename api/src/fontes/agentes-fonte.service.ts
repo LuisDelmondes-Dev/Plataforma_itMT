@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, ConflictException } from '@nestj
 import { spawn } from 'node:child_process';
 import { DatabaseService } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
+import { REGIAO } from '../config/regiao';
 
 /**
  * F5 — AGENTES DE FONTE. Um agente por fonte de dados. Regra do produto:
@@ -81,15 +82,15 @@ async function situacaoIndicador(db: DatabaseService, indicador: string, fonteLi
 
 const AGENTES: DefAgente[] = [
   {
-    slug: 'territorio', nome: 'Malha territorial (142 municípios)',
+    slug: 'territorio', nome: `Malha territorial (${REGIAO.municipiosEsperados} municípios)`,
     fonte: 'IBGE — API de Localidades', tipo: 'API', validadeDias: 366,
-    descricao: 'Municípios de MT com RGI/RGInt oficiais — a base de todo recorte territorial (RN-001).',
+    descricao: `Municípios de ${REGIAO.sigla} com RGI/RGInt oficiais — a base de todo recorte territorial (RN-001).`,
     async verificar(db) {
       const n = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "Municipio"`)).rows[0].n;
       const carga = await cargaMaisRecente(db, '%API de Localidades%');
       const idade = diasDesde(carga.ultima);
-      const resumo = { municipios_no_banco: n, esperado: 142, ultima_carga: carga.ultima?.slice(0, 10) ?? null, idade_da_carga_dias: idade };
-      if (n < 142) return { atualizado: false, motivo: `Apenas ${n}/142 municípios no banco (malha demo).`, resumo };
+      const resumo = { municipios_no_banco: n, esperado: REGIAO.municipiosEsperados, ultima_carga: carga.ultima?.slice(0, 10) ?? null, idade_da_carga_dias: idade };
+      if (n < REGIAO.municipiosEsperados) return { atualizado: false, motivo: `Apenas ${n}/${REGIAO.municipiosEsperados} municípios no banco (malha demo).`, resumo };
       if (idade === null || idade > this.validadeDias)
         return { atualizado: false, motivo: 'Malha completa, mas sem carga oficial recente.', resumo };
       return { atualizado: true, motivo: `Malha oficial completa (carga de ${resumo.ultima_carga}).`, resumo };

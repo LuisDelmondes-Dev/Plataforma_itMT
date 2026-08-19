@@ -1,0 +1,20 @@
+{
+  "fonte": {
+    "nome": "INEP — Censo Escolar (escolas ativas)",
+    "origem": "Instituto Nacional de Estudos e Pesquisas Educacionais Anísio Teixeira",
+    "url": "https://www.gov.br/inep/pt-br/acesso-a-informacao/dados-abertos/microdados/censo-escolar",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Dados abertos INEP (Lei 12.527/2011)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": {
+    "nome": "Escolas ativas",
+    "unidade": "escolas",
+    "tipoAgregacao": "SOMA",
+    "subtemaNome": "Escolas ativas"
+  },
+  "colunas": { "codigoIbge": "codigo_ibge", "valor": "valor" },
+  "dataReferencia": "2025-12-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

@@ -1,16 +1,25 @@
 import {
-  BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards,
+  BadRequestException, Body, ConflictException, Controller, Get, Param, ParseIntPipe, Post, Query, Req, ServiceUnavailableException, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
-import { AdminGuard } from '../admin/admin.controller';
+import { Papeis, PapeisGuard } from '../auth/papeis.guard';
+import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantTransactionInterceptor } from '../auth/tenant-transaction.interceptor';
 import { traduzVeto } from './geo.controller';
+import { createHash, randomUUID } from 'node:crypto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { TenantObjectStorageService } from '../auth/tenant-object-storage.service';
+import { TenantRequest } from '../auth/tenant-context.guard';
 
 // ============================================================
 // MTIMAGENS / VIDEOS
 // ============================================================
 @Controller('admin/midia')
-@UseGuards(AdminGuard)
+@UseGuards(PapeisGuard, TenantContextGuard)
+@Papeis('ADMIN','CURADOR')
+@UseInterceptors(TenantTransactionInterceptor)
 export class MidiaAdminController {
   constructor(private readonly db: DatabaseService, private readonly trilha: AuditoriaService) {}
 
@@ -127,9 +136,51 @@ export class MidiaPublicoController {
 // CAMPO
 // ============================================================
 @Controller('admin/campo')
-@UseGuards(AdminGuard)
+@UseGuards(PapeisGuard, TenantContextGuard)
+@Papeis('ADMIN','CURADOR')
+@UseInterceptors(TenantTransactionInterceptor)
 export class CampoController {
-  constructor(private readonly db: DatabaseService, private readonly trilha: AuditoriaService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly trilha: AuditoriaService,
+    private readonly storage: TenantObjectStorageService,
+  ) {}
+
+  @Get('uploads/url')
+  async urlUpload(@Req() req: TenantRequest, @Query('object_key') objectKey?: string) {
+    if (!objectKey) throw new BadRequestException('object_key obrigatório.');
+    try {
+      return { url: await this.storage.urlAssinada(req.tenantContext!, objectKey, 300), expira_em_segundos: 300 };
+    } catch (erro) {
+      if (/namespace tenant|Caminho de objeto/.test((erro as Error).message)) throw new BadRequestException('Objeto inválido.');
+      throw new ServiceUnavailableException({ codigo: 'STORAGE_INDISPONIVEL', mensagem: 'Objeto temporariamente indisponível.' });
+    }
+  }
+
+  @Post('uploads')
+  @UseInterceptors(FileInterceptor('arquivo', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } }))
+  async upload(
+    @Req() req: TenantRequest,
+    @Body() dto: { idempotency_key?: string },
+    @UploadedFile() arquivo?: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+  ) {
+    if (!arquivo?.buffer?.length) throw new BadRequestException('Envie o campo arquivo.');
+    const permitidos: Record<string,string> = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','video/mp4':'mp4' };
+    const extensao = permitidos[arquivo.mimetype];
+    if (!extensao) throw new BadRequestException('Formato permitido: JPEG, PNG, WebP ou MP4.');
+    const objectId = dto.idempotency_key && /^[0-9a-f-]{36}$/i.test(dto.idempotency_key) ? dto.idempotency_key : randomUUID();
+    const chave = this.storage.criarChave(req.tenantContext!, 'campo', objectId, extensao);
+    try {
+      const salvo = await this.storage.gravar(req.tenantContext!, chave, arquivo.buffer);
+      return { object_key: salvo.chave, sha256: salvo.sha256, bytes: salvo.bytes, mime: arquivo.mimetype };
+    } catch (erro) {
+      if ((erro as NodeJS.ErrnoException).code === 'EEXIST') return { object_key: chave, duplicado: true };
+      throw new ServiceUnavailableException({
+        codigo: 'STORAGE_INDISPONIVEL',
+        mensagem: 'Armazenamento temporariamente indisponível; o item permanece na fila offline.',
+      });
+    }
+  }
 
   /** RF-CAMPO-001: missão com polígono, produto esperado, equipe, janela e autorizações. */
   @Post('missoes')
@@ -181,15 +232,42 @@ export class CampoController {
   async registrarCaptura(@Param('id', ParseIntPipe) id: number, @Body() d: Record<string, unknown>) {
     for (const c of ['operador','caminho_objeto','capturado_em'] as const)
       if (!d?.[c]) throw new BadRequestException(`Campo obrigatório: ${c}.`);
-    const r = await this.db.query<{ id: string }>(
+    const idempotencyKey = typeof d.idempotency_key === 'string' ? d.idempotency_key : randomUUID();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey))
+      throw new BadRequestException('idempotency_key deve ser UUID.');
+    const formularioVersao = typeof d.formulario_versao === 'string' ? d.formulario_versao : 'campo-v1';
+    const payloadHash = createHash('sha256').update(JSON.stringify({
+      missao_id: id, operador: d.operador, sensor: d.sensor ?? null, gnss: d.gnss ?? null,
+      exif: d.exif ?? null, checklist_ok: Boolean(d.checklist_ok), caminho_objeto: d.caminho_objeto,
+      capturado_em: d.capturado_em, formulario_versao: formularioVersao,
+    })).digest('hex');
+    const r = await this.db.query<{ id: string; duplicada: boolean }>(
       `INSERT INTO "CapturaCampo"
         ("CapturaCampo_MissaoId","CapturaCampo_Operador","CapturaCampo_Sensor","CapturaCampo_Gnss",
-         "CapturaCampo_Exif","CapturaCampo_ChecklistOk","CapturaCampo_CaminhoObjeto","CapturaCampo_CapturadoEm")
-       VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7,$8::timestamptz) RETURNING "CapturaCampo_Id" AS id`,
+         "CapturaCampo_Exif","CapturaCampo_ChecklistOk","CapturaCampo_CaminhoObjeto","CapturaCampo_CapturadoEm",
+         "CapturaCampo_IdempotencyKey","CapturaCampo_FormularioVersao","CapturaCampo_PayloadHash")
+       VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7,$8::timestamptz,$9,$10,$11)
+       ON CONFLICT ("CapturaCampo_TenantId","CapturaCampo_OrganizacaoId","CapturaCampo_IdempotencyKey")
+       DO UPDATE SET "CapturaCampo_IdempotencyKey"=EXCLUDED."CapturaCampo_IdempotencyKey"
+         WHERE "CapturaCampo"."CapturaCampo_PayloadHash"=EXCLUDED."CapturaCampo_PayloadHash"
+       RETURNING "CapturaCampo_Id" AS id,(xmax<>0) AS duplicada`,
       [id, d.operador, d.sensor ?? null, JSON.stringify(d.gnss ?? null),
-       JSON.stringify(d.exif ?? null), Boolean(d.checklist_ok), d.caminho_objeto, d.capturado_em],
+       JSON.stringify(d.exif ?? null), Boolean(d.checklist_ok), d.caminho_objeto, d.capturado_em,
+       idempotencyKey, formularioVersao, payloadHash],
     );
-    return { id: Number(r.rows[0].id), missao: id };
+    if (!r.rows[0]) throw new ConflictException('idempotency_key já foi usado com conteúdo diferente.');
+    return { id: Number(r.rows[0].id), missao: id, duplicada: r.rows[0].duplicada, idempotency_key: idempotencyKey };
+  }
+
+  @Get('formularios/ativo')
+  async formularioAtivo() {
+    const r = await this.db.query(
+      `SELECT "FormularioCampo_Versao" AS versao,"FormularioCampo_Titulo" AS titulo,
+              "FormularioCampo_Schema" AS schema
+         FROM "FormularioCampo" WHERE "FormularioCampo_Status"='ATIVO'
+        ORDER BY "FormularioCampo_CriadoEm" DESC LIMIT 1`,
+    );
+    return r.rows[0];
   }
 
   @Get('missoes')

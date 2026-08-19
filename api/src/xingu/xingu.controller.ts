@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Headers, Post } from '@nest
 import { OrquestradorService } from './orquestrador.service';
 import { InterpreteService, ProvedorEmCascata, ProvedorLlm, RefLlm } from './interprete.service';
 import { CustoService } from './custo.service';
+import { DatabaseService, PLATFORM_PUBLIC_CONTEXT } from '../database/database.service';
 
 interface PerguntaDto {
   pergunta: string;
@@ -14,12 +15,13 @@ export class XinguController {
     private readonly orquestrador: OrquestradorService,
     private readonly interprete: InterpreteService,
     private readonly custo: CustoService,
+    private readonly db: DatabaseService,
   ) {}
 
   /** A15: consumo do LLM (dia/mês) vs teto. */
   @Get('custo')
   custoDoLlm() {
-    return this.custo.resumo();
+    return this.db.withTenantTransaction(PLATFORM_PUBLIC_CONTEXT, () => this.custo.resumo());
   }
 
   // Cache do autodiagnóstico: o ping consome tokens em cada provedor, então
@@ -39,7 +41,7 @@ export class XinguController {
     if (this.situacaoCache && agora - this.situacaoCache.quando < XinguController.SITUACAO_TTL_MS) {
       return this.situacaoCache.valor;
     }
-    const valor = await this.calcularSituacao();
+    const valor = await this.db.withTenantTransaction(PLATFORM_PUBLIC_CONTEXT, () => this.calcularSituacao());
     this.situacaoCache = { quando: agora, valor };
     return valor;
   }
@@ -83,10 +85,10 @@ export class XinguController {
     if (!dto?.pergunta || typeof dto.pergunta !== 'string' || dto.pergunta.length > 1000) {
       throw new BadRequestException('Envie { pergunta: string } com até 1000 caracteres.');
     }
-    return this.orquestrador.perguntar(
+    return this.db.withTenantTransaction(PLATFORM_PUBLIC_CONTEXT, () => this.orquestrador.perguntar(
       dto.pergunta,
       dto.contexto,
       sabotar === '1', // gancho de teste do veto A06 (inerte em produção)
-    );
+    ));
   }
 }

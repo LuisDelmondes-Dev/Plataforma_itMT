@@ -6,39 +6,105 @@
 #   POSTGRES_SENHA        senha do dono do banco (role itmt)
 #   ITMT_APP_SENHA        senha do role de aplicação itmt_app
 #   ADMIN_TOKEN           >= 24 caracteres (o main.ts valida)
+#   SESSION_SECRET        >= 32 caracteres
+#   ADMIN_SENHA_INICIAL   >= 16 caracteres
 #   CORS_ORIGEM           ex.: https://itmt.mt.gov.br
+#   CADDY_DOMINIO         ex.: itmt.mt.gov.br
 #
 # A API conecta como itmt_app (RG-10) — o main.ts recusa subir
-# como dono do banco. TLS: coloque um proxy reverso (nginx/
-# traefik/caddy) na frente de web:3000 e api:3001; nada aqui
-# deve ser exposto diretamente à internet.
+# como dono do banco. Caddy é a única entrada publicada; banco, API e
+# web permanecem acessíveis somente pelas redes internas do Compose.
 # ============================================================
 services:
   db:
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_SENHA:?defina POSTGRES_SENHA}
-    ports: []                       # banco NUNCA exposto ao host em produção
+    ports: !reset []                # banco NUNCA exposto ao host em produção
+    volumes: !override
+      - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    networks: [backend]
+
+  migrator:
+    build:
+      context: .
+      dockerfile: coletores/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://itmt:${POSTGRES_SENHA:?defina POSTGRES_SENHA}@db:5432/itmt
+      ITMT_APP_SENHA: ${ITMT_APP_SENHA:?defina ITMT_APP_SENHA}
+    command: >
+      sh -c 'node scripts/migrar.mjs && node scripts/preparar-producao.mjs'
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+    networks: [backend]
 
   api:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://itmt_app:${ITMT_APP_SENHA:?defina ITMT_APP_SENHA}@db:5432/itmt
       ADMIN_TOKEN: ${ADMIN_TOKEN:?defina ADMIN_TOKEN}
+      SESSION_SECRET: ${SESSION_SECRET:?defina SESSION_SECRET}
+      ADMIN_SENHA_INICIAL: ${ADMIN_SENHA_INICIAL:?defina ADMIN_SENHA_INICIAL}
       CORS_ORIGEM: ${CORS_ORIGEM:?defina CORS_ORIGEM}
+      METRICS_TOKEN: ${METRICS_TOKEN:?defina METRICS_TOKEN}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OBJECT_STORAGE_DRIVER: s3
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:?defina OBJECT_STORAGE_BUCKET}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-sa-east-1}
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-}
+      OBJECT_STORAGE_FORCE_PATH_STYLE: ${OBJECT_STORAGE_FORCE_PATH_STYLE:-0}
+      OBJECT_STORAGE_KMS_KEY: ${OBJECT_STORAGE_KMS_KEY:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    ports: !reset []
+    depends_on:
+      db: { condition: service_healthy }
+      migrator: { condition: service_completed_successfully }
+      clamav: { condition: service_started }
     restart: unless-stopped
+    networks: [backend, egress]
 
   web:
+    ports: !reset []
     restart: unless-stopped
+    networks: [backend]
+
+  clamav:
+    networks: [backend]
+
+  proxy:
+    image: caddy:2.10-alpine
+    environment:
+      CADDY_DOMINIO: ${CADDY_DOMINIO:?defina CADDY_DOMINIO}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api: { condition: service_healthy }
+      web: { condition: service_started }
+    restart: unless-stopped
+    networks: [backend, edge]
 
   # RF-INGEST-011 + RF-ADMIN-008: rotinas diárias que o README
   # mandava "agendar no cron" — agora são um serviço.
   rotinas:
-    build: ./api
+    build:
+      context: .
+      dockerfile: coletores/Dockerfile
     environment:
       DATABASE_URL: postgres://itmt:${POSTGRES_SENHA:?defina POSTGRES_SENHA}@db:5432/itmt
       API_URL: http://api:3001
+      REFRESH_STATUS_FILE: /status/refrescar-fontes.json
+    volumes:
+      - rotinas_status:/status
     entrypoint: >
       sh -c 'while true; do
         echo "[rotinas] $(date -Iseconds) manter-particoes";
@@ -47,6 +113,12 @@ services:
         node scripts/refrescar-fontes.mjs || echo "[rotinas] ALERTA: refresh de fontes falhou";
         echo "[rotinas] $(date -Iseconds) coletar-fontes (CNES/INEP via Python)";
         node scripts/coletar-fontes.mjs || echo "[rotinas] ALERTA: coleta de fontes falhou";
+        echo "[rotinas] $(date -Iseconds) pacote F1 IBGE";
+        node scripts/ingestar-pacote-f1-ibge.mjs || echo "[rotinas] ALERTA: pacote F1 IBGE falhou";
+        echo "[rotinas] $(date -Iseconds) gate técnico F1";
+        node scripts/validar-pacote-f1.mjs --somente-dados || echo "[rotinas] ALERTA: gate técnico F1 incompleto";
+        echo "[rotinas] $(date -Iseconds) gate de publicação F1";
+        node scripts/validar-pacote-f1.mjs || echo "[rotinas] Gate de publicação F1 aguarda curadoria";
         echo "[rotinas] $(date -Iseconds) alerta:fontes";
         node scripts/alerta-fontes.mjs || echo "[rotinas] ALERTA: fontes falhou";
         echo "[rotinas] $(date -Iseconds) verificar-cadeia";
@@ -55,7 +127,9 @@ services:
       done'
     depends_on:
       db: { condition: service_healthy }
+      migrator: { condition: service_completed_successfully }
     restart: unless-stopped
+    networks: [backend, egress]
 
   # Backup diário com retenção de 14 dias. A cadeia SHA-256 detecta
   # adulteração; o backup é quem garante restauração.
@@ -76,6 +150,16 @@ services:
     depends_on:
       db: { condition: service_healthy }
     restart: unless-stopped
+    networks: [backend]
 
 volumes:
   backups:
+  caddy_data:
+  caddy_config:
+  rotinas_status:
+
+networks:
+  backend:
+    internal: true
+  edge:
+  egress:

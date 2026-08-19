@@ -14,11 +14,12 @@ interface Publico { slug: string; nome: string; direitos: number }
  * verificação são indissociáveis da ficha — a mesma régua de
  * procedência do resto da plataforma.
  */
-export default async function Direitos({
-  searchParams,
-}: {
-  searchParams: { area?: string; publico?: string; q?: string; pouco?: string };
-}) {
+export default async function Direitos(
+  props: {
+    searchParams: Promise<{ area?: string; publico?: string; q?: string; pouco?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const qs = new URLSearchParams();
   if (searchParams.area) qs.set('area', searchParams.area);
   if (searchParams.publico) qs.set('publico', searchParams.publico);

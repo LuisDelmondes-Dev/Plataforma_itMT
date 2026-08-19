@@ -1,5 +1,10 @@
 # ROADMAP.md — Roadmap por Fases
 
+> **Roadmap vigente:** o plano executável de 36 meses, incluindo as novas fases
+> F5–F7 e os gates de liberação, está em
+> [`docs/programa/PLANO_DIRETOR_36_MESES.md`](../programa/PLANO_DIRETOR_36_MESES.md).
+> Este arquivo permanece como histórico da primeira decomposição do PRD.
+
 > Marcos derivados do PRD. Prazos ⚠️ a validar com proponentes (orçamento/equipe).
 
 ## Fase 0 — Planejamento e Fundação

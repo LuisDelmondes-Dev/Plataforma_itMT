@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { REGIAO } from '../config/regiao';
 
 export type Recorte = 'ESTADO' | 'MUNICIPIO' | 'RGINT' | 'RGI' | 'CONSORCIO';
 
@@ -81,7 +82,11 @@ export class TerritorioService {
   listarConsorcios() {
     return this.db
       .query(
-        `SELECT "Consorcio_Id" AS id, "Consorcio_Nome" AS nome, "Consorcio_Tipo" AS tipo FROM "Consorcio" ORDER BY 2`,
+        `SELECT "Consorcio_Id" AS id, "Consorcio_Nome" AS nome, "Consorcio_Tipo" AS tipo,
+                "Consorcio_FonteUrl" AS fonte_url, "Consorcio_VerificadoEm" AS verificado_em
+           FROM "Consorcio"
+          WHERE "Consorcio_Status" = 'ATIVO'
+          ORDER BY 2`,
       )
       .then((r) => r.rows);
   }
@@ -100,7 +105,7 @@ export class TerritorioService {
         const r = await this.db.query<{ c: string }>(
           `SELECT "Municipio_CodigoIbge" AS c FROM "Municipio"`,
         );
-        return { codigos: r.rows.map((x) => x.c), rotulo: 'Mato Grosso' };
+        return { codigos: r.rows.map((x) => x.c), rotulo: REGIAO.nome };
       }
       case 'MUNICIPIO': {
         const m = await this.obterMunicipio(codigo!);

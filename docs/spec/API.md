@@ -54,6 +54,15 @@
 - **Saída:** status / registros.
 - **Auth:** admin · **Prioridade:** Média · **Riscos:** erro de config → validação + RBAC.
 
+### 1.9. Integrações de parceiros — `/v1/integracoes`
+- **Objetivo:** consumo servidor-a-servidor do catálogo e dos indicadores publicados.
+- **Gestão:** `/v1/parceiros/chaves` cria, lista e revoga credenciais do proprietário.
+- **Auth:** `X-API-Key` ou `Authorization: ApiKey`; o segredo completo é exibido uma única vez.
+- **Escopos:** `catalogo:ler`, `indicadores:ler`.
+- **Quotas:** janela por minuto e por dia, com saldo nos cabeçalhos `X-RateLimit-*` e `429` no excedente.
+- **Estado:** implementado e validado localmente; contrato OpenAPI 3.1 em `/v1/openapi.json`;
+  SLA e homologação operacional ainda pendentes.
+
 ## 2. Integrações externas (consumidas)
 
 | Nome | Objetivo | Entrada | Saída | Auth | Prioridade | Riscos |
