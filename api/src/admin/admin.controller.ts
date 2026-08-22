@@ -162,6 +162,20 @@ export class AdminController {
       `UPDATE "Indicador" SET "Indicador_StatusValidacao" = $2 WHERE "Indicador_Id" = $1`,
       [id, dto.decisao === 'APROVADO' ? 'APROVADO' : 'REJEITADO'],
     );
+    // RN-004: taxonomia é dado. A ingestão promove SEM_FONTE→EM_CONSTRUCAO
+    // quando a carga chega; o parecer favorável fecha o ciclo promovendo o
+    // subtema a DISPONIVEL — mas só se o indicador aprovado TEM observação
+    // (aprovado sem dado continua EM_CONSTRUCAO; ausência é resposta, não
+    // disponibilidade). Sem isto, a curadoria não fica navegável na UI.
+    if (dto.decisao === 'APROVADO') {
+      await this.db.query(
+        `UPDATE "SubtemaConsulta" s SET "SubtemaConsulta_Status" = 'DISPONIVEL'
+          WHERE s."SubtemaConsulta_Id" = (SELECT "Indicador_SubtemaId" FROM "Indicador" WHERE "Indicador_Id" = $1)
+            AND s."SubtemaConsulta_Status" <> 'DISPONIVEL'
+            AND EXISTS (SELECT 1 FROM "Observacao" o WHERE o."Observacao_IndicadorId" = $1)`,
+        [id],
+      );
+    }
     await this.auditoria.registrar('admin', 'PARECER_INDICADOR', 'Indicador', String(id), {
       parecerista: dto.parecerista, decisao: dto.decisao, justificativa: dto.justificativa,
     });
