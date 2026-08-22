@@ -136,3 +136,49 @@ test('inventário de produção pega indicador e direito de teste publicados', a
     await db.end();
   }
 });
+
+// EV-20260822-049: a política de cache de navegação do service worker era
+// denylist — cacheava tudo da origem menos /biblioteca/curadoria — e por isso
+// gravava /o/<slug> (workspace privado do tenant) no disco do dispositivo.
+// Invertida para allowlist: rota não declarada NÃO é cacheada. Este teste fixa
+// o invariante e, principalmente, prova que rota NOVA nasce fora do cache.
+test('service worker só cacheia navegação pública declarada (allowlist)', async () => {
+  const codigo = await readFile('../web/public/sw.js', 'utf8');
+  const listeners = new Map();
+  const gravadas = [];
+  const caches = {
+    open: async () => ({ put: async (req) => { gravadas.push(new URL(req.url).pathname); }, keys: async () => [], delete: async () => true }),
+    keys: async () => [], match: async () => undefined,
+  };
+  const self = {
+    location: { origin: 'https://itmt.mt.gov.br' },
+    clients: { claim: async () => undefined }, skipWaiting() {},
+    addEventListener(tipo, handler) { listeners.set(tipo, handler); },
+  };
+  runInNewContext(codigo, { self, caches, URL, fetch: async () => ({ ok: true, clone() { return this; } }) });
+
+  const navegar = async (pathname) => {
+    const pendentes = [];
+    listeners.get('fetch')({
+      request: { method: 'GET', url: `${self.location.origin}${pathname}`, mode: 'navigate' },
+      respondWith: (p) => pendentes.push(p),
+    });
+    await Promise.all(pendentes);
+    await new Promise((r) => setTimeout(r, 0)); // cache.put é assíncrono
+  };
+
+  const PUBLICAS = ['/', '/consulta', '/municipio/5103403', '/direitos', '/campo', '/biblioteca'];
+  const PRIVADAS = [
+    '/o/prefeitura-cuiaba',        // workspace do tenant — o vazamento original
+    '/organizacoes',               // seleção de organização
+    '/integracoes',                // chaves de parceiro
+    '/biblioteca/curadoria',       // fila de curadoria
+    '/rota-nova-ainda-nao-mapeada',// rota futura: o silêncio precisa ser seguro
+  ];
+  for (const p of [...PUBLICAS, ...PRIVADAS]) await navegar(p);
+
+  for (const p of PUBLICAS)
+    assert.ok(gravadas.includes(p), `navegação pública deveria ser cacheável: ${p}`);
+  for (const p of PRIVADAS)
+    assert.ok(!gravadas.includes(p), `VAZAMENTO — rota não pública foi ao cache do dispositivo: ${p}`);
+});
