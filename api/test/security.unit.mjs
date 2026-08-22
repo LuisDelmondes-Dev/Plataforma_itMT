@@ -92,3 +92,47 @@ test('service worker ignora PURGE_PRIVATE de origem externa', async () => {
   mensagem({ origin: self.location.origin, data: { type: 'PURGE_PRIVATE' }, waitUntil() { aguardas++; } });
   assert.equal(aguardas, 1);
 });
+
+// Regressão EV-20260822-046: o inventário de fixtures precisa cobrir TUDO que o
+// portal público serve. Antes, `Indicador` e `Direito` ficavam de fora — um banco
+// de produção que herdasse fixtures de suíte subia sem reclamar e servia
+// "Indicador de teste …" / "Direito íntegro F4" como dado oficial.
+test('inventário de produção pega indicador e direito de teste publicados', async () => {
+  const { SQL_INVENTARIO_DEMO } = await import('../dist/common/inventario-demo.js');
+  const { default: pg } = await import('pg');
+  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const limpo = await db.query(SQL_INVENTARIO_DEMO);
+    const antes = new Map(limpo.rows.map((r) => [r.categoria, Number(r.total)]));
+
+    await db.query('BEGIN');
+    // Fixtures hostis: nomes no padrão que as suítes realmente produzem.
+    await db.query(
+      `INSERT INTO "Indicador" ("Indicador_SubtemaId","Indicador_Nome","Indicador_Unidade",
+         "Indicador_TipoAgregacao","Indicador_StatusValidacao")
+       SELECT "SubtemaConsulta_Id", 'Indicador de teste 123456', 'unid.', 'SOMA', 'APROVADO'
+         FROM "SubtemaConsulta" LIMIT 1`,
+    );
+    await db.query(
+      `INSERT INTO "Direito" ("Direito_Nome","Direito_Area","Direito_Resumo","Direito_QuemPodeUsar",
+         "Direito_Abrangencia","Direito_OrgaoGestor","Direito_NaturezaNorma",
+         "Direito_BaseLegal","Direito_LinkOficial","Direito_DataVerificacao","Direito_Confianca","Direito_Status")
+       VALUES ('Direito de teste F4', (SELECT "Direito_Area" FROM "Direito" LIMIT 1),
+               'fixture de regressão','qualquer pessoa',
+               (SELECT "Direito_Abrangencia" FROM "Direito" LIMIT 1),'Órgão de teste','LEI',
+               'Lei 1/2000','https://www.gov.br/x', CURRENT_DATE, 'CONFIRMADA','PUBLICADO')`,
+    );
+
+    const sujo = await db.query(SQL_INVENTARIO_DEMO);
+    const depois = new Map(sujo.rows.map((r) => [r.categoria, Number(r.total)]));
+    for (const categoria of ['indicadores de teste aprovados', 'direitos de teste publicados']) {
+      assert.equal(
+        (depois.get(categoria) ?? 0) - (antes.get(categoria) ?? 0), 1,
+        `inventário não contou "${categoria}" — produção subiria servindo fixture como oficial`,
+      );
+    }
+  } finally {
+    await db.query('ROLLBACK').catch(() => {});
+    await db.end();
+  }
+});

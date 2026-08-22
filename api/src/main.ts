@@ -6,6 +6,7 @@ import type { INestApplication } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { DatabaseService } from './database/database.service';
+import { SQL_INVENTARIO_DEMO, mensagemInventarioDemo } from './common/inventario-demo';
 
 const PRODUCAO = process.env.NODE_ENV === 'production';
 
@@ -52,39 +53,8 @@ function validarConfiguracaoProducao() {
 async function validarConteudoProducao(app: INestApplication) {
   if (!PRODUCAO) return;
   const db = app.get(DatabaseService);
-  const r = await db.query<{ categoria: string; total: string }>(`
-    SELECT categoria, total::text FROM (
-      SELECT 'fontes demonstrativas' AS categoria, count(*) AS total
-        FROM "Fonte"
-       WHERE lower("Fonte_Nome") ~ '(^|[^[:alnum:]])demo([^[:alnum:]]|$)'
-          OR lower("Fonte_Origem") ~ '(^|[^[:alnum:]])demo([^[:alnum:]]|$)'
-      UNION ALL
-      SELECT 'cargas demonstrativas', count(*)
-        FROM "Carga"
-       WHERE "Carga_CaminhoBronze" ILIKE '%/demo/%' OR "Carga_CaminhoBronze" LIKE 's3://t/%'
-      UNION ALL
-      SELECT 'consorcios demonstrativos', count(*)
-        FROM "Consorcio"
-       WHERE "Consorcio_Status" = 'DEMONSTRACAO'
-      UNION ALL
-      SELECT 'midias demonstrativas publicadas', count(*)
-        FROM "AtivoMidia"
-       WHERE "AtivoMidia_StatusPublicacao" = 'PUBLICADO'
-         AND ("AtivoMidia_CaminhoObjeto" ILIKE '%/demo/%' OR "AtivoMidia_CaminhoObjeto" LIKE 's3://t/%')
-      UNION ALL
-      SELECT 'produtos GIS demonstrativos publicados', count(*)
-        FROM "ProdutoGeografico"
-       WHERE "ProdutoGeografico_StatusPublicacao" = 'PUBLICADO'
-         AND ("ProdutoGeografico_CaminhoObjeto" ILIKE '%/demo/%' OR "ProdutoGeografico_CaminhoObjeto" LIKE 's3://t/%')
-    ) inventario WHERE total > 0
-  `);
-  if (r.rows.length) {
-    const inventario = r.rows.map((x) => `${x.categoria}: ${x.total}`).join('; ');
-    throw new Error(
-      `Publicacao bloqueada: o banco contem fixtures demonstrativas (${inventario}). ` +
-      'Carregue fontes oficiais e remova as fixtures antes de iniciar em producao.',
-    );
-  }
+  const r = await db.query<{ categoria: string; total: string }>(SQL_INVENTARIO_DEMO);
+  if (r.rows.length) throw new Error(mensagemInventarioDemo(r.rows));
 }
 
 async function bootstrap() {
