@@ -35,7 +35,7 @@ export default async function Acervo(props: { searchParams: Promise<{ q?: string
         {ativos.map((a) => (
           <div key={a.id} className="card">
             <div className="overline">{a.tipo.replace('_', ' ')} · {a.municipio}</div>
-            <h3 style={{ fontSize: 18, lineHeight: '24px', margin: '8px 0' }}>{a.titulo}</h3>
+            <h2 style={{ fontSize: 18, lineHeight: '24px', margin: '8px 0' }}>{a.titulo}</h2>
             {a.duracao_min && <p className="mono" style={{ fontSize: 12, color: 'var(--ink-3)', margin: 0 }}>{a.duracao_min} min · legenda e transcrição disponíveis</p>}
             <div className="regua" style={{ marginTop: 10 }}>
               <div className="trilho" aria-hidden="true" />
