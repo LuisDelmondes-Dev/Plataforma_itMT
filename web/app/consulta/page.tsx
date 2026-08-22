@@ -246,6 +246,11 @@ function Consulta() {
 
   return (
     <>
+      {/* WCAG 1.3.1/2.4.6 (EV-20260822-051): a página não tinha cabeçalho algum —
+          leitor de tela abria sem título e o documento ficava sem raiz de outline.
+          O rail 1-2-3 carrega o contexto visual, então o h1 vai em .sr-only:
+          nomeia a página para tecnologia assistiva sem alterar o desenho. */}
+      <h1 className="sr-only">Consulta de indicadores por município, tema e subtema</h1>
       <section className="modo-pesquisa-contextual" aria-label="Modo da pesquisa atual">
         <div>
           <div className="overline">Experiência de consulta</div>
@@ -261,9 +266,9 @@ function Consulta() {
         </div>
 
         <section className={`passo ${local ? 'feito' : 'ativo'}`}>
-          <h3>
+          <h2>
             <span className="n">1</span> Local
-          </h3>
+          </h2>
           <input
             className="campo"
             placeholder="Buscar município…"
@@ -292,9 +297,9 @@ function Consulta() {
         </section>
 
         <section className={`passo ${tema ? 'feito' : local ? 'ativo' : ''}`}>
-          <h3>
+          <h2>
             <span className="n">2</span> Tema
-          </h3>
+          </h2>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {temas.map((t) => (
               <button
@@ -313,9 +318,9 @@ function Consulta() {
         </section>
 
         <section className={`passo ${subtema ? 'feito' : tema ? 'ativo' : ''}`}>
-          <h3>
+          <h2>
             <span className="n">3</span> Subtema
-          </h3>
+          </h2>
           {tema ? (
             subtemas.map((s) => (
               <button

@@ -17,7 +17,12 @@
   --on-surface-variant:#43474f;
   --inverse-surface:#2e3132;
   --inverse-on-surface:#f0f1f2;
-  --outline:#747780;
+  /* WCAG 1.4.3 (EV-20260822-051): #747780 dava 4.25:1 sobre --surface e 4.47:1
+     sobre branco — reprovava o mínimo 4.5:1 onde o token é usado como cor de
+     TEXTO (código IBGE, legendas, dicas). Escurecido para 5.20:1 no pior fundo,
+     com folga para não reprovar de novo se as superfícies clarearem. Como borda
+     (1.4.11, mínimo 3:1) o valor novo só melhora. */
+  --outline:#666972;
   --outline-variant:#c4c6d0;
 
   --primary:#001736;
@@ -153,7 +158,10 @@ a:hover { color: var(--primary-container); text-decoration: underline; }
 .regua.animada { animation:entrar var(--motion-enter) var(--ease) both; }
 @keyframes entrar { from { opacity:0; transform:translateY(2px);} to { opacity:1; transform:translateY(0);} }
 
-.chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; line-height:16px; font-weight:600; padding:3px 10px; border-radius:var(--radius-full); background:var(--surface-container-high); color:var(--on-surface-variant); }
+/* WCAG 2.2 SC 2.5.8 (EV-20260822-051): 3px+16px+3px dava alvo de 22px. Os chips
+   do Mapa de Direitos são filtros clicáveis (não links inline em frase, logo sem
+   a exceção do critério) — padding para 4px leva o alvo a 24px, o mínimo AA. */
+.chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; line-height:16px; font-weight:600; padding:4px 10px; border-radius:var(--radius-full); background:var(--surface-container-high); color:var(--on-surface-variant); }
 .chip .forma { font-size:8px; line-height:1; }
 .chip.atual { background:var(--secondary-container); color:var(--on-secondary-container); }
 .chip.atual .forma { color:var(--on-secondary-container); }
@@ -191,7 +199,7 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 
 .rail { width:320px; flex:none; }
 .rail .passo { border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface-container-lowest); padding:16px; margin-bottom:12px; }
-.rail .passo h3 { margin:0 0 8px; font-size:14px; line-height:20px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.rail .passo h2 { margin:0 0 8px; font-size:14px; line-height:20px; font-weight:600; display:flex; align-items:center; gap:8px; }
 .rail .passo .n { font-size:12px; font-weight:600; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; border-radius:var(--radius-full); border:1px solid var(--outline-variant); color:var(--on-surface-variant); flex:none; }
 .rail .passo.ativo .n { border-color:var(--primary); color:var(--primary); background:var(--surface-container-low); }
 .rail .passo.feito .n { background:var(--secondary); border-color:var(--secondary); color:var(--on-secondary); }
