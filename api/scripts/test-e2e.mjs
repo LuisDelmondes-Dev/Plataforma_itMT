@@ -31,6 +31,7 @@ const SUITES_PADRAO = [
   'test/least-privilege.unit.mjs',
   'test/tenant-expand.unit.mjs',
   'test/fontes-registry.test.mjs',
+  'test/sentinela-redteam.unit.mjs',
 ];
 const ARQUIVOS_TESTE = process.env.TEST_FILES
   ? process.env.TEST_FILES.split(',').map((x) => x.trim()).filter(Boolean)
