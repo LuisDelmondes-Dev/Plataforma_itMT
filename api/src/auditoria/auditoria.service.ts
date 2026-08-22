@@ -40,6 +40,11 @@ export class AuditoriaService {
         // O hash é calculado sobre a forma CANÔNICA do jsonb no Postgres
         // (($5::jsonb)::text), para que o verificador independente recompute
         // exatamente o mesmo texto ao ler a coluna (RF-ADMIN-008).
+        // convert_to(...,'UTF8') — nunca cast text::bytea: o cast interpreta o
+        // texto no formato de entrada de bytea e REJEITA payloads cujo JSON
+        // contém barra invertida (ex.: aspas escapadas \" dentro de string),
+        // fazendo o evento falhar silenciosamente. convert_to gera os mesmos
+        // bytes UTF-8 que o verificador em Node hasheia.
         try {
           await client.query(
             `INSERT INTO "EventoAuditoria"
@@ -48,7 +53,7 @@ export class AuditoriaService {
                 "EventoAuditoria_HashAnterior","EventoAuditoria_HashAtual",
                 "EventoAuditoria_TenantId","EventoAuditoria_OrganizacaoId")
              VALUES ($1,$2,$3,$4,$5::jsonb,$6::text,
-                     encode(sha256(($6::text || ($5::jsonb)::text)::bytea),'hex'),$7,$8)`,
+                     encode(sha256(convert_to($6::text || ($5::jsonb)::text,'UTF8')),'hex'),$7,$8)`,
             [ator, acao, entidade, entidadeId, payloadCanonico, hashAnterior, tid, oid],
           );
           if (gerenciaTransacao) await client.query('COMMIT');

@@ -194,6 +194,42 @@ test('RF-ADMIN-001: vencimentos D-90/D-30/D-7', async () => {
   assert.ok(v.some((a) => a.alerta === 'D-30'));
 });
 
+// Regressão: payload com aspas/barra invertida TEM de ser auditado.
+// O cast text::bytea antigo rejeitava JSON canônico contendo \" e o evento
+// era engolido pelo catch do AuditoriaService — decisão sem trilha, em
+// silêncio. Corrigido com convert_to(...,'UTF8'); este teste fixa o invariante.
+test('RG-10: parecer com aspas e barra invertida entra na cadeia de auditoria', async () => {
+  const sub = await (
+    await fetch(`${BASE}/admin/indicadores`, {
+      method: 'POST', headers: ADMIN,
+      body: JSON.stringify({
+        subtema_id: 5, nome: `Indicador auditoria ${Date.now()}`, unidade: 'unid.', tipo_agregacao: 'SOMA',
+      }),
+    })
+  ).json();
+  const r = await fetch(`${BASE}/admin/indicadores/${sub.id}/parecer`, {
+    method: 'POST', headers: ADMIN,
+    body: JSON.stringify({
+      parecerista: 'Curadoria "de teste" \\ regressão',
+      decisao: 'REJEITADO',
+      justificativa: 'Duplicidade com "Indicador X" (caminho C:\\temp) — payload hostil ao cast bytea.',
+    }),
+  });
+  assert.equal(r.status, 201);
+  const { default: pg } = await import('pg');
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const ev = await pool.query(
+      `SELECT count(*)::int AS n FROM "EventoAuditoria"
+        WHERE "EventoAuditoria_Acao" = 'PARECER_INDICADOR' AND "EventoAuditoria_EntidadeId" = $1`,
+      [String(sub.id)],
+    );
+    assert.equal(ev.rows[0].n, 1, 'o evento PARECER_INDICADOR precisa existir mesmo com aspas no payload');
+  } finally {
+    await pool.end();
+  }
+});
+
 // ---------- 5. Cadeia de auditoria ----------
 test('RF-ADMIN-008: cadeia de auditoria íntegra após toda a suíte', () => {
   execFileSync('node', ['scripts/verificar-cadeia.mjs'], { env: process.env, stdio: 'pipe' });
