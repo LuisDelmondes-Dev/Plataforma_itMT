@@ -86,6 +86,33 @@ test('ficha íntegra publica e aparece no mapa com a régua completa', async () 
   assert.ok(ficha.body.aviso_legal.length > 0, 'aviso legal indissociável da ficha');
 });
 
+// EV-20260822-047: a publicação tinha ida e não tinha volta. Uma ficha que a
+// realidade revoga ficava presa no portal — F4-RG-03 recusa marcar REVOGADA
+// enquanto o status for PUBLICADO, e não havia caminho auditado para o status.
+test('ficha publicada sai de circulação por via auditada e pode ser revogada', async () => {
+  const d = await post('/admin/direitos', { ...fichaBase, nome: 'Direito para retirada F4' });
+  assert.equal((await post(`/admin/direitos/${d.body.id}/publicar`)).status, 201);
+  assert.ok((await get('/direitos')).body.some((x) => x.id === d.body.id), 'deveria estar no mapa');
+
+  // exige responsável e motivo — retirar do ar também é ato humano
+  assert.equal((await post(`/admin/direitos/${d.body.id}/despublicar`, {})).status, 400);
+
+  const fora = await post(`/admin/direitos/${d.body.id}/despublicar`, {
+    responsavel: 'Curadoria de teste', motivo: 'norma revogada em teste automatizado',
+    confianca: 'REVOGADA',
+  });
+  assert.equal(fora.status, 201);
+  assert.equal(fora.body.status, 'RASCUNHO');
+  assert.equal(fora.body.confianca, 'REVOGADA');
+
+  assert.ok(!(await get('/direitos')).body.some((x) => x.id === d.body.id), 'não pode seguir no mapa');
+  // não é apagada: o acervo curado preserva a ficha, e republicar volta a passar pelos vetos
+  assert.equal((await post(`/admin/direitos/${d.body.id}/publicar`)).status, 422);
+  // idempotência: despublicar de novo não encontra ficha publicada
+  assert.equal((await post(`/admin/direitos/${d.body.id}/despublicar`,
+    { responsavel: 'x', motivo: 'y' })).status, 400);
+});
+
 test('seed curado publicado: lista, áreas, públicos e condições respondem', async () => {
   const lista = await get('/direitos');
   assert.equal(lista.status, 200);

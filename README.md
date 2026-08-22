@@ -205,6 +205,9 @@ POST /v1/direitos/descubra   # perfil sem identificadores → provável/avaliaç
 # ADMIN
 POST /v1/admin/direitos                  # nasce RASCUNHO
 POST /v1/admin/direitos/:id/publicar     # passa pelos vetos F4-RG-01..05
+POST /v1/admin/direitos/:id/despublicar  # {responsavel, motivo, confianca?} → volta a RASCUNHO
+                                         # retirar do ar também é ato humano; use confianca=REVOGADA
+                                         # quando a norma cair (F4-RG-03). A ficha não é apagada.
 ```
 
 Banco: `psql -d itmt -f db/06-f4.sql -f db/07-seed-f4.sql` (o compose já monta os dois).

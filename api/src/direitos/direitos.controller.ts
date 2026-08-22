@@ -103,4 +103,46 @@ export class DireitosAdminController {
       return { id, status: 'PUBLICADO' };
     } catch (e) { traduzVetoF4(e); }
   }
+
+  /**
+   * Retirada de circulação (EV-20260822-047). A publicação tinha ida e não
+   * tinha volta: uma ficha que a realidade revoga ficava presa no portal,
+   * porque o veto F4-RG-03 recusa marcar `REVOGADA` enquanto o status ainda
+   * for PUBLICADO — e não havia caminho auditado para mudar o status.
+   *
+   * A ficha volta a RASCUNHO (não é apagada: `Direito` é acervo curado, e o
+   * histórico da decisão fica na trilha). Como o trigger devolve cedo quando
+   * o novo status não é PUBLICADO, `confianca=REVOGADA` pode vir no MESMO
+   * UPDATE — é essa a ordem que o banco aceita.
+   *
+   * Simétrico à publicação em rigor: exige responsável e motivo, como o
+   * parecer de indicador (RG-09) — retirar do ar também é ato humano.
+   */
+  @Post(':id/despublicar')
+  async despublicar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() d: { responsavel?: string; motivo?: string; confianca?: string },
+  ) {
+    if (!d?.responsavel || !d?.motivo)
+      throw new BadRequestException('Campos obrigatórios: responsavel, motivo.');
+    const CONFIANCAS = ['CONFIRMADA', 'CONFIRMADA_VARIACAO_LOCAL', 'CONDICIONADA_AVALIACAO',
+      'JURISPRUDENCIAL', 'EM_REGULAMENTACAO', 'NECESSITA_CONFIRMACAO', 'REVOGADA'];
+    if (d.confianca && !CONFIANCAS.includes(d.confianca))
+      throw new BadRequestException(`confianca inválida. Use uma de: ${CONFIANCAS.join(', ')}.`);
+    try {
+      const r = await this.db.query<{ id: number; status: string; confianca: string }>(
+        `UPDATE "Direito"
+            SET "Direito_Status"='RASCUNHO',
+                "Direito_Confianca"=coalesce($2,"Direito_Confianca")
+          WHERE "Direito_Id"=$1 AND "Direito_Status"='PUBLICADO'
+         RETURNING "Direito_Id" AS id, "Direito_Status" AS status, "Direito_Confianca" AS confianca`,
+        [id, d.confianca ?? null],
+      );
+      if (!r.rows[0]) throw new BadRequestException('Direito inexistente ou já fora de publicação.');
+      await this.trilha.registrar('admin', 'DESPUBLICACAO_DIREITO', 'Direito', String(id), {
+        responsavel: d.responsavel, motivo: d.motivo, confianca: r.rows[0].confianca,
+      });
+      return { id, status: r.rows[0].status, confianca: r.rows[0].confianca };
+    } catch (e) { traduzVetoF4(e); }
+  }
 }
