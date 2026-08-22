@@ -25,6 +25,12 @@ const SUITES_PADRAO = [
   'test/s3-storage.unit.mjs',
   'test/conformidade.e2e.mjs',
   'test/participacao.e2e.mjs',
+  // Suítes de segurança que existiam fora do runner (EV-20260822-044):
+  // sem elas aqui, a catraca de menor privilégio e o contrato de expand
+  // tenant não protegiam nada em npm test/CI.
+  'test/least-privilege.unit.mjs',
+  'test/tenant-expand.unit.mjs',
+  'test/fontes-registry.test.mjs',
 ];
 const ARQUIVOS_TESTE = process.env.TEST_FILES
   ? process.env.TEST_FILES.split(',').map((x) => x.trim()).filter(Boolean)

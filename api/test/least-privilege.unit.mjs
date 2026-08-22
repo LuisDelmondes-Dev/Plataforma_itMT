@@ -24,6 +24,12 @@ test('itmt_app não recebe DML amplo nem default privileges perigosos', async ()
       'TermoConsentimento:INSERT','TermoConsentimento:UPDATE','AtivoMidia:INSERT','AtivoMidia:UPDATE',
       'MissaoCampo:INSERT','MissaoCampo:UPDATE','MissaoAutorizacao:INSERT','MissaoAutorizacao:UPDATE',
       'CapturaCampo:INSERT','CapturaCampo:UPDATE',
+      // Grants posteriores a db/33 — todo grant novo em db/NN-*.sql exige linha
+      // consciente AQUI (a catraca do menor privilégio):
+      'Assinatura:INSERT','Assinatura:UPDATE','UsoPlano:INSERT','UsoPlano:UPDATE',            // db/38 (planos/assinaturas F4)
+      'NaoConformidade:INSERT','NaoConformidade:UPDATE','NaoConformidadeHistorico:INSERT',    // db/39 (F7; histórico é append-only, sem UPDATE)
+      'ParticipacaoCidada:INSERT','ParticipacaoCidada:UPDATE',                                // db/40 (participação F6)
+      'SubtemaConsulta:UPDATE',                                                               // db/46 (parecer promove subtema a DISPONIVEL)
     ]);
     for (const row of amplos.rows) assert.ok(permitidos.has(`${row.table_name}:${row.privilege_type}`), `grant excedente: ${row.table_name}:${row.privilege_type}`);
     const defaults = await owner.query(
