@@ -208,12 +208,39 @@ export class AdminController {
               "Autorizacao_Orgao" AS orgao, "Autorizacao_VigenciaInicio"::text AS vigencia_inicio,
               "Autorizacao_VigenciaFim"::text AS vigencia_fim,
               ("Autorizacao_VigenciaFim" - CURRENT_DATE) AS dias_restantes
-         FROM "Autorizacao" ORDER BY "Autorizacao_VigenciaFim"`,
+         FROM "Autorizacao" WHERE "Autorizacao_Status" = 'ATIVA'
+        ORDER BY "Autorizacao_VigenciaFim"`,
     );
     return r.rows;
   }
 
-  /** Alertas D-90 / D-30 / D-7 (RF-ADMIN-001). */
+  /**
+   * Arquivamento (EV-20260822-055). Autorização não tinha ciclo de vida —
+   * cadastrada uma vez, poluía os alertas D-90/30/7 para sempre (13 fixtures
+   * de suíte faziam exatamente isso no dev). Mesmo desenho da despublicação
+   * de direito (EV-047): exige responsável e motivo, audita, e NÃO apaga — a
+   * autorização é registro de conformidade; some dos painéis, fica na base.
+   */
+  @Post('autorizacoes/:id/arquivar')
+  async arquivarAutorizacao(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() d: { responsavel?: string; motivo?: string },
+  ) {
+    if (!d?.responsavel || !d?.motivo)
+      throw new BadRequestException('Campos obrigatórios: responsavel, motivo.');
+    const r = await this.db.query<{ id: number }>(
+      `UPDATE "Autorizacao" SET "Autorizacao_Status"='ARQUIVADA'
+        WHERE "Autorizacao_Id"=$1 AND "Autorizacao_Status"='ATIVA'
+        RETURNING "Autorizacao_Id" AS id`, [id],
+    );
+    if (!r.rows[0]) throw new BadRequestException('Autorização inexistente ou já arquivada.');
+    await this.auditoria.registrar('admin', 'ARQUIVAMENTO_AUTORIZACAO', 'Autorizacao', String(id), {
+      responsavel: d.responsavel, motivo: d.motivo,
+    });
+    return { id, status: 'ARQUIVADA' };
+  }
+
+  /** Alertas D-90 / D-30 / D-7 (RF-ADMIN-001) — só autorizações ativas. */
   @Get('autorizacoes/vencimentos')
   async vencimentos() {
     const r = await this.db.query<{ id: number; numero: string; orgao: string; fim: string; dias: number }>(
@@ -221,7 +248,8 @@ export class AdminController {
               "Autorizacao_VigenciaFim"::text AS fim,
               ("Autorizacao_VigenciaFim" - CURRENT_DATE)::int AS dias
          FROM "Autorizacao"
-        WHERE "Autorizacao_VigenciaFim" - CURRENT_DATE <= 90
+        WHERE "Autorizacao_Status" = 'ATIVA'
+          AND "Autorizacao_VigenciaFim" - CURRENT_DATE <= 90
         ORDER BY dias`,
     );
     const faixa = (d: number) =>

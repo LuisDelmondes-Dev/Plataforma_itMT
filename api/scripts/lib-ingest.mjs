@@ -263,6 +263,22 @@ export async function verificarEsquema(db, { fonteId, cargaId, amostra, aceitarN
     `SELECT "EsquemaFonte_Fingerprint" AS fp FROM "EsquemaFonte" WHERE "EsquemaFonte_FonteId" = $1`,
     [fonteId],
   );
+  // EV-20260822-054: uma carga marcada BLOQUEADA_DRIFT ficava bloqueada PARA
+  // SEMPRE — nem `--aceitar-esquema` limpava o status, e `registrarCarga`
+  // (dedup por hash) devolvia a mesma carga bloqueada nas reexecuções. O
+  // aceite consciente do esquema (RF-INGEST-005) — ou o esquema voltar a
+  // casar com o contrato — é exatamente a condição em que o bloqueio deixa
+  // de fazer sentido; a partir daqui, ambos os caminhos desbloqueiam a carga
+  // desta execução, com evento na trilha.
+  const desbloquear = async (motivo) => {
+    const r = await db.query(
+      `UPDATE "Carga" SET "Carga_Status" = 'PROMOVIDA'
+        WHERE "Carga_Id" = $1 AND "Carga_Status" = 'BLOQUEADA_DRIFT'
+        RETURNING "Carga_Id"`, [cargaId],
+    );
+    if (r.rows[0])
+      await auditar(db, 'ingest', 'CARGA_DESBLOQUEADA', 'Carga', String(cargaId), { fonte_id: fonteId, motivo });
+  };
   if (!atual.rows[0]) {
     await db.query(
       `INSERT INTO "EsquemaFonte" ("EsquemaFonte_FonteId","EsquemaFonte_Fingerprint") VALUES ($1,$2)`,
@@ -270,7 +286,10 @@ export async function verificarEsquema(db, { fonteId, cargaId, amostra, aceitarN
     );
     return; // primeiro contrato registrado
   }
-  if (atual.rows[0].fp === fp) return;
+  if (atual.rows[0].fp === fp) {
+    await desbloquear('esquema confere com o contrato vigente');
+    return;
+  }
   if (aceitarNovo) {
     await db.query(
       `UPDATE "EsquemaFonte" SET "EsquemaFonte_Fingerprint" = $2, "EsquemaFonte_AtualizadoEm" = now()
@@ -278,6 +297,7 @@ export async function verificarEsquema(db, { fonteId, cargaId, amostra, aceitarN
       [fonteId, fp],
     );
     await auditar(db, 'ingest', 'ESQUEMA_ATUALIZADO', 'Fonte', String(fonteId), { novo: fp });
+    await desbloquear('novo esquema aceito conscientemente (--aceitar-esquema)');
     return;
   }
   await db.query(`UPDATE "Carga" SET "Carga_Status" = 'BLOQUEADA_DRIFT' WHERE "Carga_Id" = $1`, [cargaId]);

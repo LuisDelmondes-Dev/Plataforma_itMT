@@ -30,6 +30,7 @@ test('itmt_app não recebe DML amplo nem default privileges perigosos', async ()
       'NaoConformidade:INSERT','NaoConformidade:UPDATE','NaoConformidadeHistorico:INSERT',    // db/39 (F7; histórico é append-only, sem UPDATE)
       'ParticipacaoCidada:INSERT','ParticipacaoCidada:UPDATE',                                // db/40 (participação F6)
       'SubtemaConsulta:UPDATE',                                                               // db/46 (parecer promove subtema a DISPONIVEL)
+      'Autorizacao:UPDATE',                                                                   // db/47 (arquivamento auditado de autorizacao)
     ]);
     for (const row of amplos.rows) assert.ok(permitidos.has(`${row.table_name}:${row.privilege_type}`), `grant excedente: ${row.table_name}:${row.privilege_type}`);
     const defaults = await owner.query(

@@ -230,6 +230,46 @@ test('RG-10: parecer com aspas e barra invertida entra na cadeia de auditoria', 
   }
 });
 
+// EV-20260822-055: autorização não tinha ciclo de vida — cadastrada uma vez,
+// poluía os alertas D-90/30/7 para sempre. O arquivamento é auditado, exige
+// justificativa, some dos painéis e NÃO apaga o registro.
+test('autorização arquivada sai dos alertas D-90/30/7 por via auditada', async () => {
+  const hoje = new Date();
+  const em15d = new Date(hoje.getTime() + 15 * 86400000).toISOString().slice(0, 10);
+  const criada = await (await fetch(`${BASE}/admin/autorizacoes`, {
+    method: 'POST', headers: ADMIN,
+    body: JSON.stringify({
+      tipo: 'LICENCA_DADOS', numero: `ARQ-${Date.now()}`, orgao: 'Órgão de arquivamento',
+      vigencia_inicio: '2026-01-01', vigencia_fim: em15d,
+    }),
+  })).json();
+  const nosAlertas = await (await fetch(`${BASE}/admin/autorizacoes/vencimentos`, { headers: ADMIN })).json();
+  assert.ok(nosAlertas.some((a) => a.id === criada.id), 'recém-criada deveria estar nos alertas');
+
+  // sem justificativa: recusa — retirar do painel também é ato humano
+  const semMotivo = await fetch(`${BASE}/admin/autorizacoes/${criada.id}/arquivar`, {
+    method: 'POST', headers: ADMIN, body: JSON.stringify({}),
+  });
+  assert.equal(semMotivo.status, 400);
+
+  const arq = await (await fetch(`${BASE}/admin/autorizacoes/${criada.id}/arquivar`, {
+    method: 'POST', headers: ADMIN,
+    body: JSON.stringify({ responsavel: 'Curadoria de teste', motivo: 'fixture de regressão' }),
+  })).json();
+  assert.equal(arq.status, 'ARQUIVADA');
+
+  const depois = await (await fetch(`${BASE}/admin/autorizacoes/vencimentos`, { headers: ADMIN })).json();
+  assert.ok(!depois.some((a) => a.id === criada.id), 'arquivada não pode seguir nos alertas');
+  const lista = await (await fetch(`${BASE}/admin/autorizacoes`, { headers: ADMIN })).json();
+  assert.ok(!lista.some((a) => a.id === criada.id), 'nem na listagem ativa');
+  // idempotência: arquivar de novo é 400, não efeito repetido
+  const denovo = await fetch(`${BASE}/admin/autorizacoes/${criada.id}/arquivar`, {
+    method: 'POST', headers: ADMIN,
+    body: JSON.stringify({ responsavel: 'x', motivo: 'y' }),
+  });
+  assert.equal(denovo.status, 400);
+});
+
 // ---------- 5. Cadeia de auditoria ----------
 test('RF-ADMIN-008: cadeia de auditoria íntegra após toda a suíte', () => {
   execFileSync('node', ['scripts/verificar-cadeia.mjs'], { env: process.env, stdio: 'pipe' });

@@ -1,7 +1,16 @@
 # ADR-004 — Multitenancy por linha e RLS
 
-**Status:** Proposta — bloqueia F4  
+**Status:** Aceita em 22/08/2026 (decisão do mantenedor Luis Delmondes)  
 **Data:** 15/08/2026
+
+> **Registro do aceite.** A condição de aceite definida abaixo — *threat model e
+> testes `Tenant A → Tenant B = DENIED` em todas as camadas* — está satisfeita:
+> EV-20260815-018/019/020/021 e EV-20260815-024 provaram DENIED em API, banco,
+> pool, storage, jobs, cache e UI (RLS `ENABLE+FORCE`, `USING+WITH CHECK`, FKs
+> compostas, `itmt_app` sem owner/BYPASSRLS), e EV-20260822-044 colocou as
+> suítes de menor privilégio e de expand tenant — que estavam fora do runner —
+> em execução a cada push no CI. Escopo do aceite: o desenho técnico desta ADR;
+> a operação SaaS em escala (IdP, billing, SLA) permanece externa (gate F4).
 
 ## Contexto
 
