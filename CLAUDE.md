@@ -9,7 +9,7 @@ programa público estruturado em fases **F0–F7**, não um app CRUD. Quatro par
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16+ / pgvector | 45 migrações SQL escritas à mão, **sem ORM** |
+| `db/` | PostgreSQL 16+ / pgvector | 47 migrações SQL escritas à mão, **sem ORM** |
 | `api/` | NestJS 11 + driver `pg` cru | o **motor determinístico** |
 | `web/` | Next.js 16 / React 19 (App Router) | portal público, 23 páginas |
 | `coletores/` | Python | raspagem de fontes sem API (CNES/TabNet, INEP) |
@@ -66,7 +66,7 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
 - **Nunca renumere/remova um `.sql` já aplicado.** As migrações novas usam
   `CREATE TABLE IF NOT EXISTS`, então um banco que aplicou o arquivo antigo **pula
   silenciosamente** o substituto e diverge sem erro. (Já aconteceu: o banco dev
-  local tem 47 registros em `_Migracao` para 45 arquivos.)
+  local tem 49 registros em `_Migracao` para 47 arquivos — duas órfãs de 15/08.)
 - **Convenção de nomes:** tabelas e colunas em PascalCase com prefixo do nome da
   tabela e aspas duplas — ex. `"Indicador_StatusValidacao"`, `"ConsumoLlm_Borda"`.
 - **Dois papéis de banco (essencial):** as migrações rodam como **dono** (`itmt`);
@@ -98,12 +98,12 @@ npm run verificar-cadeia   # recomputa a cadeia SHA-256; exit 1 se quebrada
 ### Testes (suíte e2e — `node --test`)
 
 `scripts/test-e2e.mjs` **cria e derruba sozinho** um banco descartável, aplica
-todas as migrações, roda as 23 suítes e termina verificando a cadeia. Aponte
+todas as migrações, roda as 28 suítes e termina verificando a cadeia. Aponte
 `DATABASE_URL` para o banco **administrativo** (`postgres`), não para o dev:
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 132 testes, ~2 min
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 151 testes, ~2,5 min
 ```
 
 O runner recusa qualquer alvo cujo nome não termine em `_test`/`_teste`, e força
@@ -214,13 +214,13 @@ propósito** (mais rigoroso).
 
 ## Onde o programa realmente está
 
-Software local: **verde** — 45 migrações aplicam do zero, 132/132 testes, cadeia
+Software local: **verde** — 47 migrações aplicam do zero, 151/151 testes, cadeia
 íntegra, builds de API e web limpos, zero vulnerabilidades de produção no `npm audit`.
 
 O que trava as fases **não é código**: são atos que o repositório não pode simular —
 nuvem soberana/IdP/WAF/KMS contratados, campanhas de campo com equipe e autorização,
 convênios científicos e aceites institucionais. O backlog de pareceres RG-09 do
-banco local foi zerado em 22/08/2026 (76 aprovados / 3 rejeitados / 0 em análise,
-EV-20260822-042/043, via `scripts/curadoria-lote.mjs`); em produção o rito se
+banco local foi zerado em 22/08/2026 (74 aprovados / 5 rejeitados / 0 em análise —
+EV-20260822-042/043/054, curadoria + rejeição de duplicatas por dado idêntico); em produção o rito se
 repete com o catálogo oficial. Ao mexer aqui, não confunda `BLOCKED_EXTERNAL` com
 pendência técnica, e **nunca converta fixture em evidência** para "fechar" um gate.
