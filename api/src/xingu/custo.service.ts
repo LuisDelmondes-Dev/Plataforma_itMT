@@ -12,8 +12,30 @@ import { DatabaseService } from '../database/database.service';
 @Injectable()
 export class CustoService {
   private readonly log = new Logger('Xingu.A15');
-  private readonly tetoDia = Number(process.env.XINGU_TETO_TOKENS_DIA ?? 500_000);
-  private readonly tetoMes = Number(process.env.XINGU_TETO_TOKENS_MES ?? 5_000_000);
+  private readonly tetoDia = CustoService.teto('XINGU_TETO_TOKENS_DIA', 500_000);
+  private readonly tetoMes = CustoService.teto('XINGU_TETO_TOKENS_MES', 5_000_000);
+
+  /**
+   * Leitura defensiva do teto (EV-20260822-053). `Number('500k')` é `NaN`, e
+   * `NaN` é *falsy* — com o cast cru, `if (this.tetoDia && ...)` era pulado e o
+   * teto do dia ficava **silenciosamente desligado**: um typo no env desarmava
+   * o governador de gasto sem nenhum sinal. Governador de custo tem de falhar
+   * seguro, então valor inválido cai no padrão e grita no log. `0` continua
+   * significando ilimitado — é semântica documentada, não erro.
+   */
+  private static teto(variavel: string, padrao: number): number {
+    const bruto = process.env[variavel];
+    if (bruto === undefined || bruto === '') return padrao;
+    const n = Number(bruto);
+    if (!Number.isFinite(n) || n < 0) {
+      new Logger('Xingu.A15').error(
+        `${variavel}="${bruto}" não é um número válido — usando o padrão ${padrao}. ` +
+          'Corrija o env: teto inválido não pode virar gasto ilimitado.',
+      );
+      return padrao;
+    }
+    return n;
+  }
   // Cache curto para não somar o banco a cada pergunta.
   private cache: { quando: number; dia: number; mes: number } | null = null;
   private static readonly CACHE_MS = 30_000;

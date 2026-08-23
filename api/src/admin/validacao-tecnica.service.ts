@@ -31,16 +31,24 @@ export class ValidacaoTecnicaService {
     const m = meta.rows[0];
 
     const stats = await this.db.query<{
-      obs: number; municipios: number; com_fonte: number; com_ref: number;
-      min: string | null; max: string | null; ref_recente: string | null;
+      obs: number; municipios: number; min: string | null; max: string | null;
+      ref_recente: string | null; ref_futuras: number;
+      fontes: number; fontes_sem_licenca: number;
+      cargas: number; cargas_bloqueadas: number;
     }>(
-      `SELECT count(*)::int AS obs,
-              count(DISTINCT "Observacao_CodigoIbge")::int AS municipios,
-              count(*) FILTER (WHERE "Observacao_FonteId" IS NOT NULL)::int AS com_fonte,
-              count(*) FILTER (WHERE "Observacao_DataReferencia" IS NOT NULL)::int AS com_ref,
-              min("Observacao_Valor")::text AS min, max("Observacao_Valor")::text AS max,
-              max("Observacao_DataReferencia")::text AS ref_recente
-         FROM "Observacao" WHERE "Observacao_IndicadorId" = $1`, [indicadorId],
+      `SELECT count(o.*)::int AS obs,
+              count(DISTINCT o."Observacao_CodigoIbge")::int AS municipios,
+              min(o."Observacao_Valor")::text AS min, max(o."Observacao_Valor")::text AS max,
+              max(o."Observacao_DataReferencia")::text AS ref_recente,
+              count(*) FILTER (WHERE o."Observacao_DataReferencia" > CURRENT_DATE)::int AS ref_futuras,
+              count(DISTINCT f."Fonte_Id")::int AS fontes,
+              count(DISTINCT f."Fonte_Id") FILTER (WHERE btrim(f."Fonte_Licenca") = '')::int AS fontes_sem_licenca,
+              count(DISTINCT c."Carga_Id")::int AS cargas,
+              count(DISTINCT c."Carga_Id") FILTER (WHERE c."Carga_Status" <> 'PROMOVIDA')::int AS cargas_bloqueadas
+         FROM "Observacao" o
+         JOIN "Fonte" f ON f."Fonte_Id" = o."Observacao_FonteId"
+         JOIN "Carga" c ON c."Carga_Id" = o."Observacao_CargaId"
+        WHERE o."Observacao_IndicadorId" = $1`, [indicadorId],
     );
     const s = stats.rows[0];
     const totalMun = (await this.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM "Municipio"`)).rows[0].n;
@@ -51,15 +59,32 @@ export class ValidacaoTecnicaService {
         ok: s.obs > 0,
         detalhe: `${s.obs} observação(ões) na base.`,
       },
+      // EV-20260822-053: aqui havia duas checagens que NUNCA podiam falhar —
+      // "Fonte presente" e "Data de referência presente" contam colunas
+      // declaradas NOT NULL no DDL. O dossiê mostrava "6/6 ✓" ao parecerista
+      // quando só 4 coisas eram de fato verificadas: confiança inflada numa
+      // decisão humana (RG-09). Foram substituídas por checagens que podem
+      // reprovar de verdade.
       {
-        nome: 'Fonte presente em todo valor (RG-06)',
-        ok: s.obs > 0 && s.com_fonte === s.obs,
-        detalhe: `${s.com_fonte}/${s.obs} com Fonte vinculada.`,
+        nome: 'Fonte com licença declarada (RG-06)',
+        ok: s.obs > 0 && s.fontes_sem_licenca === 0,
+        detalhe: s.fontes_sem_licenca > 0
+          ? `${s.fontes_sem_licenca} fonte(s) sem licença preenchida.`
+          : `Todas as ${s.fontes} fonte(s) declaram licença.`,
       },
       {
-        nome: 'Data de referência presente (RN-005/07)',
-        ok: s.obs > 0 && s.com_ref === s.obs,
-        detalhe: `${s.com_ref}/${s.obs} com data de referência; mais recente ${s.ref_recente?.slice(0, 10) ?? '—'}.`,
+        nome: 'Datas de referência plausíveis (RN-007)',
+        ok: s.obs > 0 && s.ref_futuras === 0,
+        detalhe: s.ref_futuras > 0
+          ? `${s.ref_futuras} observação(ões) com data no futuro — origem suspeita.`
+          : `Nenhuma data futura; mais recente ${s.ref_recente?.slice(0, 10) ?? '—'}.`,
+      },
+      {
+        nome: 'Cargas promovidas, sem drift bloqueado (RF-INGEST-005)',
+        ok: s.obs > 0 && s.cargas_bloqueadas === 0,
+        detalhe: s.cargas_bloqueadas > 0
+          ? `${s.cargas_bloqueadas} carga(s) não promovida(s) alimentam este indicador — revise antes de publicar.`
+          : `As ${s.cargas} carga(s) de origem estão promovidas.`,
       },
       {
         nome: 'Unidade declarada',
