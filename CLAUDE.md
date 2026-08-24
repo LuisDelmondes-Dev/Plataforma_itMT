@@ -58,11 +58,11 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
 ## Banco de dados — como funciona (sem ORM)
 
 - **Driver `pg` cru + SQL versionado.** As migrações são `db/NN-*.sql` numeradas.
-  `api/scripts/migrar.mjs` descobre os arquivos por regex `^\d{2}-.*\.sql$` em ordem
-  e registra o que aplicou em `_Migracao` (idempotente). **Não há Prisma/TypeORM** —
+  `api/scripts/migrar.mjs` descobre os arquivos via `scripts/lib-migracoes.mjs`
+  (regex `^\d{2,}-.*\.sql$`, **ordem numérica** pelo prefixo — sort lexicográfico
+  aplicaria `100-` antes de `99-`; coberto por `test/migracoes.unit.mjs`) e
+  registra o que aplicou em `_Migracao` (idempotente). **Não há Prisma/TypeORM** —
   não introduza um. Adicionar tabela = novo `db/NN-*.sql`.
-  ⚠️ O regex exige **exatamente dois dígitos**: a migração `100-` não será
-  descoberta. Ajustar para `^\d{2,}-` antes de chegar lá.
 - **Nunca renumere/remova um `.sql` já aplicado.** As migrações novas usam
   `CREATE TABLE IF NOT EXISTS`, então um banco que aplicou o arquivo antigo **pula
   silenciosamente** o substituto e diverge sem erro. (Já aconteceu: o banco dev
@@ -98,12 +98,12 @@ npm run verificar-cadeia   # recomputa a cadeia SHA-256; exit 1 se quebrada
 ### Testes (suíte e2e — `node --test`)
 
 `scripts/test-e2e.mjs` **cria e derruba sozinho** um banco descartável, aplica
-todas as migrações, roda as 28 suítes e termina verificando a cadeia. Aponte
+todas as migrações, roda as 29 suítes e termina verificando a cadeia. Aponte
 `DATABASE_URL` para o banco **administrativo** (`postgres`), não para o dev:
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 151 testes, ~2,5 min
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 154 testes, ~2,5 min
 ```
 
 O runner recusa qualquer alvo cujo nome não termine em `_test`/`_teste`, e força
@@ -214,7 +214,7 @@ propósito** (mais rigoroso).
 
 ## Onde o programa realmente está
 
-Software local: **verde** — 47 migrações aplicam do zero, 151/151 testes, cadeia
+Software local: **verde** — 47 migrações aplicam do zero, 154/154 testes, cadeia
 íntegra, builds de API e web limpos, zero vulnerabilidades de produção no `npm audit`.
 
 O que trava as fases **não é código**: são atos que o repositório não pode simular —

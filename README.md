@@ -41,7 +41,7 @@ O repositório comprova os principais invariantes de arquitetura, mas ainda não
 representa a operação estadual integral dos anexos. Código, dados, operação e
 aceite são acompanhados separadamente na
 [`MATRIZ_EVIDENCIAS.md`](docs/programa/MATRIZ_EVIDENCIAS.md). A suíte `npm test`
-recria um banco descartável e executa 151 testes em 28 suítes, incluindo procedência,
+recria um banco descartável e executa 154 testes em 29 suítes, incluindo procedência,
 números, vetos, projeções, Xingú, campo, direitos e co-produção.
 
 | Requisito F1 | Estado |
@@ -276,7 +276,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 | Rate limit global (20/s, 300/min por IP; ajustável) ativo em produção | `app.module.ts` (@nestjs/throttler) | desligado em dev/testes |
 | Healthcheck processo+banco | `GET /v1/saude` + HEALTHCHECK nos Dockerfiles | `{"ok":true,"banco":"ok"}` |
 | Migrações versionadas e idempotentes | `api/scripts/migrar.mjs` → tabela `_Migracao` | aplica as 47 do zero, reexecução aplica 0 |
-| CI: banco descartável + 151 testes + cadeia + builds + audit + SBOM + secrets scan + CodeQL | `.github/workflows/ci.yml` | roda em cada push/PR |
+| CI: banco descartável + 154 testes + cadeia + builds + audit + SBOM + secrets scan + CodeQL | `.github/workflows/ci.yml` | roda em cada push/PR |
 | Rotinas diárias (RF-INGEST-011 fonte parada; RF-ADMIN-008 cadeia) | serviço `rotinas` no compose prod | log com alerta explícito |
 | Backup diário do Postgres, retenção 14 dias | serviço `backup` no compose prod | volume `backups` |
 | Imagens multi-stage, não-root, só deps de produção | `api/Dockerfile`, `web/Dockerfile` | — |
@@ -336,7 +336,7 @@ GET  /v1/admin/quarentena
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 151 testes num banco descartável criado pelo runner
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 154 testes num banco descartável criado pelo runner
 ```
 
 ### Casos de teste que demonstram as regras
@@ -432,7 +432,7 @@ ciência aberta/DCAT, object storage S3, continuidade e observabilidade.
 
 ```bash
 cd api
-npm test                  # 47 migrações + 151 testes + cadeia de auditoria
+npm test                  # 47 migrações + 154 testes + cadeia de auditoria
 npm run test:restore      # prova destrutiva somente em bancos *_test
 npm audit --omit=dev --audit-level=moderate
 

@@ -11,6 +11,7 @@ import {
   auditarNumeros, narrarComLlm, narrativaDeterministica,
 } from './narrador';
 import { AgentExecutorService } from './agent-executor.service';
+import { GanchoTesteNarrativa } from './gancho-teste';
 import { CONTRATO_A01_INTERPRETE, CONTRATO_A04_EXECUTOR, CONTRATO_A05_NARRADOR, CONTRATO_A06_AUDITOR } from './contracts';
 import { REGIAO } from '../config/regiao';
 
@@ -59,12 +60,13 @@ export class OrquestradorService {
     private readonly trilha: AuditoriaService,
     private readonly custo: CustoService,
     private readonly executor: AgentExecutorService,
+    private readonly ganchoTeste: GanchoTesteNarrativa,
   ) {}
 
   async perguntar(
     pergunta: string,
     contexto?: { indicador_id?: number; codigo_ibge?: string },
-    sabotar = false, // gancho de teste do veto A06 — inerte em produção
+    sabotar = false, // gancho de teste do veto A06 — só tem efeito com o provider de NODE_ENV=test (gancho-teste.ts)
   ): Promise<RespostaXingu> {
     const t0 = Date.now();
     const estados: Estado[] = ['RECEBIDA'];
@@ -177,10 +179,7 @@ export class OrquestradorService {
       },
       fallback: async () => ({ narrativa: narrativaDeterministica(resultado) }),
     });
-    narrativa = saidaNarrador.narrativa;
-    if (sabotar && process.env.NODE_ENV !== 'production') {
-      narrativa += ' Estima-se ainda cerca de 999999 casos adicionais.';
-    }
+    narrativa = this.ganchoTeste.aplicar(saidaNarrador.narrativa, sabotar);
     estados.push('NARRADA');
 
     // ---- A06: Auditor de Números — VETO ABSOLUTO (KR3.2 = 0) ----

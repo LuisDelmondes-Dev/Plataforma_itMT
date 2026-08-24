@@ -12,10 +12,11 @@
 // Requer DATABASE_URL com um role que possa DDL (dono do banco);
 // a API em produção continua conectando como itmt_app.
 // ============================================================
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { descobrirMigracoes } from './lib-migracoes.mjs';
 
 const dirDb = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'db');
 const baseline = process.argv.includes('--baseline');
@@ -34,7 +35,7 @@ async function main() {
   const aplicadas = new Set(
     (await cliente.query(`SELECT "_Migracao_Arquivo" AS a FROM "_Migracao"`)).rows.map((r) => r.a),
   );
-  const arquivos = readdirSync(dirDb).filter((f) => /^\d{2}-.*\.sql$/.test(f)).sort();
+  const arquivos = descobrirMigracoes(dirDb);
   let executadas = 0;
 
   for (const arq of arquivos) {

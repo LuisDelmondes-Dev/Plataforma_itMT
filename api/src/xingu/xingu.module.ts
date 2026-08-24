@@ -7,6 +7,7 @@ import { CatalogoService, InterpreteLexico } from './interprete-lexico';
 import { IndicadoresModule } from '../indicadores/indicadores.module';
 import { AuditoriaModule } from '../auditoria/auditoria.module';
 import { AgentExecutorService } from './agent-executor.service';
+import { GanchoTesteNarrativa, GanchoInerte, GanchoSabotagemA06 } from './gancho-teste';
 
 @Module({
   imports: [IndicadoresModule, AuditoriaModule],
@@ -14,6 +15,12 @@ import { AgentExecutorService } from './agent-executor.service';
   providers: [
     OrquestradorService, InterpreteService, CustoService, CatalogoService,
     InterpreteLexico, AgentExecutorService,
+    // A sabotagem que prova o veto A06 só é fiada em NODE_ENV=test;
+    // qualquer outro ambiente compõe o no-op (ver gancho-teste.ts).
+    {
+      provide: GanchoTesteNarrativa,
+      useClass: process.env.NODE_ENV === 'test' ? GanchoSabotagemA06 : GanchoInerte,
+    },
   ],
 })
 export class XinguModule {}

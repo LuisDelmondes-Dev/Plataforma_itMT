@@ -47,7 +47,7 @@ export default function CuradoriaDocumental() {
   const [ocupado, setOcupado] = useState(false);
 
   useEffect(() => {
-    try { setToken(sessionStorage.getItem(TOKEN_STORAGE) ?? ''); } catch {}
+    try { setToken(sessionStorage.getItem(TOKEN_STORAGE) ?? ''); } catch { /* storage indisponível (ex.: modo privado): começa sem token */ }
   }, []);
 
   async function carregarFila(tokenAtual = token) {
@@ -65,7 +65,7 @@ export default function CuradoriaDocumental() {
 
   function salvarToken(valor: string) {
     setToken(valor);
-    try { sessionStorage.setItem(TOKEN_STORAGE, valor); } catch {}
+    try { sessionStorage.setItem(TOKEN_STORAGE, valor); } catch { /* storage indisponível (ex.: modo privado): sessão segue sem persistir */ }
   }
 
   async function enviar(e: FormEvent<HTMLFormElement>) {

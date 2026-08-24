@@ -38,7 +38,7 @@ export default function Integracoes() {
   const [autenticado, setAutenticado] = useState(false);
 
   useEffect(() => {
-    try { setToken(sessionStorage.getItem(TOKEN_STORAGE) ?? ''); } catch {}
+    try { setToken(sessionStorage.getItem(TOKEN_STORAGE) ?? ''); } catch { /* storage indisponível (ex.: modo privado): começa sem token */ }
   }, []);
 
   async function carregar(tokenAtual = token) {
@@ -51,7 +51,7 @@ export default function Integracoes() {
     if (!r.ok) { setAutenticado(false); setAviso(await mensagemErro(r)); return; }
     setChaves(await r.json());
     setAutenticado(true);
-    try { sessionStorage.setItem(TOKEN_STORAGE, tokenAtual); } catch {}
+    try { sessionStorage.setItem(TOKEN_STORAGE, tokenAtual); } catch { /* storage indisponível (ex.: modo privado): sessão segue sem persistir */ }
   }
 
   async function criar(e: FormEvent<HTMLFormElement>) {

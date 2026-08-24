@@ -88,7 +88,7 @@ export class XinguController {
     return this.db.withTenantTransaction(PLATFORM_PUBLIC_CONTEXT, () => this.orquestrador.perguntar(
       dto.pergunta,
       dto.contexto,
-      sabotar === '1', // gancho de teste do veto A06 (inerte em produção)
+      sabotar === '1', // gancho de teste do veto A06 — no-op fora de NODE_ENV=test (gancho-teste.ts)
     ));
   }
 }

@@ -90,3 +90,21 @@ Não pontuada — não é corrigível por código daqui:
 
 Próxima fotografia: após fechar D-01/D-03/D-07 ou quando um ciclo novo
 revelar categoria nova — o que vier primeiro.
+
+## Adendo 24/08/2026 — fases 1 e 2 executadas no mesmo dia
+
+- **D-01 fechado**, e o ATTACK provou que a correção sugerida na nota antiga
+  do CLAUDE.md (só alargar o regex) era **insuficiente**: com `^\d{2,}-` e
+  `sort()` lexicográfico, a migração `100-` seria aplicada **antes** da
+  `99-`. Descoberta extraída para `api/scripts/lib-migracoes.mjs` com ordem
+  numérica pelo prefixo; `test/migracoes.unit.mjs` cobre o regex, a ordem e
+  a paridade com o comportamento histórico para os 47 arquivos atuais.
+- **D-03 fechado**: o payload de sabotagem saiu do orquestrador. O provider
+  `GanchoTesteNarrativa` (`api/src/xingu/gancho-teste.ts`) compõe o no-op em
+  qualquer ambiente que não seja `NODE_ENV=test` — allowlist por composição
+  no lugar do denylist `NODE_ENV !== 'production'`, que ficava armado em
+  ambiente que esquecesse a variável. O teste KR3.2 de `xingu.e2e.mjs`
+  continua provando o veto A06 sem alteração.
+- **D-07 fechado**: os 4 guardas de `sessionStorage` ganharam comentário
+  explicando o silêncio (storage indisponível em modo privado).
+- D-02 permanece contido; D-04/D-05/D-06/D-08 seguem como registrado acima.
