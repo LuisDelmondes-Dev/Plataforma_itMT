@@ -1,13 +1,14 @@
 # ITMT — Plataforma de Inteligência Territorial de Mato Grosso
 
 MVP executável da Fase 1, derivado de `PRD-ITMT.md` v2.0.
-Monorepo com três partes:
+Monorepo com quatro partes:
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16 | DDL do núcleo F1 + seed demonstrativo |
+| `db/` | PostgreSQL 16+ / pgvector | 47 migrações SQL versionadas (sem ORM) + seed demonstrativo |
 | `api/` | NestJS + pg | **Motor determinístico** — território, taxonomia, consulta, rollup, auditoria |
 | `web/` | Next.js 16 (App Router) | Portal com sidebar retrátil e design system **Territorial Intelligence System** |
+| `coletores/` | Python | Raspagem de fontes sem API (CNES/TabNet, INEP); nunca escrevem no banco |
 
 ## Subir tudo (Docker)
 
@@ -40,7 +41,7 @@ O repositório comprova os principais invariantes de arquitetura, mas ainda não
 representa a operação estadual integral dos anexos. Código, dados, operação e
 aceite são acompanhados separadamente na
 [`MATRIZ_EVIDENCIAS.md`](docs/programa/MATRIZ_EVIDENCIAS.md). A suíte `npm test`
-recria um banco descartável e executa 57 testes e2e, incluindo procedência,
+recria um banco descartável e executa 151 testes em 28 suítes, incluindo procedência,
 números, vetos, projeções, Xingú, campo, direitos e co-produção.
 
 | Requisito F1 | Estado |
@@ -112,7 +113,7 @@ também passam pela mesma validação de schema, com o léxico como plano B.
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-export XINGU_MODELO=claude-haiku-4-5   # ou outro; A15 (custo) entra no roadmap F5
+export XINGU_MODELO=claude-haiku-4-5   # ou outro; A15 (custo) já governa o gasto (custo.service.ts)
 ```
 
 Sem a chave, nada quebra: `RG-05` por construção.
@@ -268,14 +269,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 | Proteção | Onde | Prova |
 |---|---|---|
-| API conecta como `itmt_app`, nunca dona do banco — trilha de auditoria INSERT-ONLY vale para a aplicação (RG-10) | `db/08-seguranca.sql` + fail-fast no `main.ts` | `UPDATE "EventoAuditoria"` como itmt_app → `permissão negada`; suíte isolada 56/56 |
+| API conecta como `itmt_app`, nunca dona do banco — trilha de auditoria INSERT-ONLY vale para a aplicação (RG-10) | `db/08-seguranca.sql` + fail-fast no `main.ts` | `UPDATE "EventoAuditoria"` como itmt_app → `permissão negada`; suíte de segurança dedicada na regressão |
 | Fail-fast de produção: token de dev, role errado ou CORS ausente ⇒ processo não sobe | `main.ts` | exit 1 com as três violações listadas |
 | Token ADMIN em comparação de tempo constante; produção exige ≥24 chars | `AdminGuard` | — |
 | Headers de segurança + CORS restrito por `CORS_ORIGEM` + `trust proxy` | `main.ts` (helmet) | — |
 | Rate limit global (20/s, 300/min por IP; ajustável) ativo em produção | `app.module.ts` (@nestjs/throttler) | desligado em dev/testes |
 | Healthcheck processo+banco | `GET /v1/saude` + HEALTHCHECK nos Dockerfiles | `{"ok":true,"banco":"ok"}` |
-| Migrações versionadas e idempotentes | `api/scripts/migrar.mjs` → tabela `_Migracao` | aplica 8, reexecução aplica 0 |
-| CI: banco descartável + 56 testes + cadeia + builds + audit + SBOM + secrets scan + CodeQL | `.github/workflows/ci.yml` | roda em cada push/PR |
+| Migrações versionadas e idempotentes | `api/scripts/migrar.mjs` → tabela `_Migracao` | aplica as 47 do zero, reexecução aplica 0 |
+| CI: banco descartável + 151 testes + cadeia + builds + audit + SBOM + secrets scan + CodeQL | `.github/workflows/ci.yml` | roda em cada push/PR |
 | Rotinas diárias (RF-INGEST-011 fonte parada; RF-ADMIN-008 cadeia) | serviço `rotinas` no compose prod | log com alerta explícito |
 | Backup diário do Postgres, retenção 14 dias | serviço `backup` no compose prod | volume `backups` |
 | Imagens multi-stage, não-root, só deps de produção | `api/Dockerfile`, `web/Dockerfile` | — |
@@ -335,7 +336,7 @@ GET  /v1/admin/quarentena
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/itmt npm test   # 56 testes em itmt_test descartável
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 151 testes num banco descartável criado pelo runner
 ```
 
 ### Casos de teste que demonstram as regras
@@ -431,7 +432,7 @@ ciência aberta/DCAT, object storage S3, continuidade e observabilidade.
 
 ```bash
 cd api
-npm test                  # 40 migrações + 131 testes + cadeia de auditoria
+npm test                  # 47 migrações + 151 testes + cadeia de auditoria
 npm run test:restore      # prova destrutiva somente em bancos *_test
 npm audit --omit=dev --audit-level=moderate
 
