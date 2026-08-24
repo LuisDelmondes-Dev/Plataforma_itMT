@@ -27,6 +27,7 @@
     "manter:particoes": "node scripts/manter-particoes.mjs",
     "golden:gerar": "node scripts/gerar-golden-set.mjs",
     "golden:avaliar": "node scripts/avaliar-golden-set.mjs",
+    "adversarial:avaliar": "node scripts/avaliar-adversarial.mjs",
     "coletar:fontes": "node scripts/coletar-fontes.mjs",
     "sincronizar:fontes": "node scripts/sincronizar-fontes.mjs",
     "test:fontes": "node --test test/fontes-registry.test.mjs"

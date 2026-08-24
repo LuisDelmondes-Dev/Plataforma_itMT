@@ -108,3 +108,28 @@ revelar categoria nova — o que vier primeiro.
 - **D-07 fechado**: os 4 guardas de `sessionStorage` ganharam comentário
   explicando o silêncio (storage indisponível em modo privado).
 - D-02 permanece contido; D-04/D-05/D-06/D-08 seguem como registrado acima.
+
+## Adendo 24/08/2026 (2) — fecho do plano: B2, D-05, D-02, D-08
+
+- **B2 executado no que era executável**: corpus adversarial de 36 formulações
+  fora do vocabulário (5 famílias), versionado em `api/golden/adversarial-a01.json`
+  com avaliador `npm run adversarial:avaliar` (diagnóstico, não gate). Baseline
+  do léxico contra o catálogo dev: **acerto 25,0%, falha segura por clarificação
+  72,2%, ERRADO 2,8%** (1/36 — casamento guloso de "população" respondendo
+  População estimada onde se pedia Densidade demográfica). Limite de autoria
+  declarado no corpus; comparação com provedor LLM segue bloqueada por crédito.
+- **D-05 decidido**: os evals **não** entram no CI por ora — exigem API no ar,
+  e o golden léxico mede cobertura de vocabulário (100% por construção).
+  Reavaliar quando houver provedor LLM com crédito: aí o eval passa a medir
+  robustez de verdade e vira candidato a gate.
+- **D-02 resolvido por forense**: diff `pg_dump --schema-only` entre o dev e um
+  banco criado do zero com as 47 migrações provou que a deriva inteira das
+  órfãs (`17-documentos.sql`/`18-busca-semantica.sql`, 15/08) se resume a
+  `DocumentoOcr`/`DocumentoOcrChunk` — 0 linhas, 0 referências no código;
+  o resto do schema é idêntico. Reconciliação entregue como script
+  (`reconciliar-dev.sql` — drop das tabelas mortas + órfãs fora do
+  `_Migracao`); execução é ato do usuário.
+- **D-08**: script `remover-bancos-obsoletos.sql` entregue (itmt_teste 11 MB,
+  itmt_ci 10 MB, itmt_diff_teste da comparação) — execução do usuário.
+- **Segue fora do alcance por desenho**: D-06 (revisor externo), ADR-005,
+  WCAG assistivo, `/code-review ultra` e os `BLOCKED_EXTERNAL` dos gates.
