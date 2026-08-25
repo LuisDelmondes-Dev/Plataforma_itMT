@@ -7,7 +7,9 @@
  * Agora vale o inverso: rota que não estiver declarada abaixo NÃO é cacheada.
  * Ao criar rota nova, o silêncio é seguro — só entra aqui o que for público.
  */
-const CACHE = 'itmt-shell-v2';
+// v3: purga caches antigos após a remoção do header e a home minimalista
+// (mesma política de allowlist de EV-049 — só a versão muda).
+const CACHE = 'itmt-shell-v3';
 const APP_SHELL = ['/', '/campo', '/itmt-icone.png', '/itmt-horizontal.png'];
 
 /** Navegações públicas que podem ficar offline. Prefixo exato ou início de rota. */
