@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { apiGet } from '@/lib/api';
 import { AREAS, CONFIANCA, GRATUIDADE, type DireitoResumo } from '@/lib/direitos';
-import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,35 +44,45 @@ export default async function Direitos(
   };
 
   return (
-    <div>
-      <CabecalhoPagina
-        overline="Cidadania"
-        titulo="Mapa de Direitos e Serviços Públicos Gratuitos"
-        descricao={
-          <>
+    <div className="direitos-pagina">
+      {/* Hero editorial da Cidadania: a identidade-mãe (navy + verde +
+          display) vestida na página mais cidadã do portal. */}
+      <section className="direitos-hero">
+        <div>
+          <p className="overline">Cidadania · verificado por parecer humano</p>
+          <h1>Mapa de Direitos e Serviços Públicos Gratuitos</h1>
+          <p className="direitos-hero-sub">
             Cada ficha traz base legal, órgão responsável, documentos, passo a passo, como
             recorrer e a <strong>data da última verificação</strong>. Nada publica sem fonte
-            oficial — o veto é de banco, não de convenção. As classificações seguem o nível de
-            segurança da informação: confirmada, com variação local, condicionada à avaliação,
-            jurisprudencial.
-          </>
-        }
-      />
+            oficial — o veto é de banco, não de convenção.
+          </p>
+          <div className="direitos-hero-acoes">
+            <Link className="btn direitos-cta" href="/direitos/descubra">✦ Descubra os seus direitos</Link>
+            <Link
+              className={`btn direitos-cta-secundaria${searchParams.pouco === '1' ? ' ativa' : ''}`}
+              href={link({ pouco: searchParams.pouco === '1' ? undefined : '1' })}
+            >
+              Direitos que muitos desconhecem
+            </Link>
+          </div>
+        </div>
+        <div className="direitos-selo" aria-hidden="true">
+          <strong>{direitos.length}</strong>
+          <span>direito{direitos.length === 1 ? '' : 's'} publicado{direitos.length === 1 ? '' : 's'}</span>
+          <small>RG-09 · parecer humano</small>
+        </div>
+      </section>
 
-      <div className="card" style={{ margin: '16px 0', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-        <Link className="btn primaria" href="/direitos/descubra">✦ Descubra os seus direitos</Link>
-        <Link className={`btn${searchParams.pouco === '1' ? ' sucesso' : ''}`} href={link({ pouco: searchParams.pouco === '1' ? undefined : '1' })}>
-          Direitos que muitos desconhecem
-        </Link>
-        <form action="/direitos" method="get" style={{ display: 'flex', gap: 8, flex: '1 1 260px' }}>
-          {searchParams.area && <input type="hidden" name="area" value={searchParams.area} />}
-          <input className="campo" type="search" name="q" placeholder="Buscar direito, benefício ou serviço…"
-            defaultValue={searchParams.q ?? ''} aria-label="Buscar direito" />
-          <button className="btn" type="submit">Buscar</button>
-        </form>
-      </div>
+      {/* Busca flutuante sobre o hero */}
+      <form action="/direitos" method="get" className="direitos-busca">
+        {searchParams.area && <input type="hidden" name="area" value={searchParams.area} />}
+        <label className="sr-only" htmlFor="direitos-busca-campo">Buscar direito</label>
+        <input id="direitos-busca-campo" className="campo" type="search" name="q"
+          placeholder="Buscar direito, benefício ou serviço…" defaultValue={searchParams.q ?? ''} />
+        <button className="btn primaria" type="submit">Buscar</button>
+      </form>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '12px 0' }}>
+      <div className="direitos-filtros">
         <Link className={`chip${!searchParams.area ? ' atual' : ''}`} href={link({ area: undefined })}>Todas as áreas</Link>
         {areas.map((a) => (
           <Link key={a.area} className={`chip${searchParams.area === a.area ? ' atual' : ''}`} href={link({ area: a.area })}>
@@ -82,7 +91,7 @@ export default async function Direitos(
         ))}
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '0 0 16px' }}>
+      <div className="direitos-filtros">
         <span className="overline" style={{ alignSelf: 'center' }}>Público:</span>
         <Link className={`chip${!searchParams.publico ? ' atual' : ''}`} href={link({ publico: undefined })}>Todos</Link>
         {publicos.filter((p) => p.direitos > 0).map((p) => (
@@ -95,26 +104,28 @@ export default async function Direitos(
       {direitos.length === 0 ? (
         <p className="aviso">Nenhum direito publicado corresponde aos filtros — a ausência é resposta, não erro.</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+        <div className="direitos-grid">
           {direitos.map((d) => {
             const c = CONFIANCA[d.confianca] ?? CONFIANCA.NECESSITA_CONFIRMACAO;
             return (
-              <Link key={d.id} href={`/direitos/${d.id}`} className="card" style={{ display: 'block', color: 'inherit' }}>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                  <span className="chip">{AREAS[d.area] ?? d.area}</span>
+              <Link key={d.id} href={`/direitos/${d.id}`} className={`direitos-card confianca-${c.classe}`}>
+                <div className="direitos-card-topo">
+                  <span className="direitos-area">{AREAS[d.area] ?? d.area}</span>
                   <span className={`chip ${c.classe}`}><span className="forma" aria-hidden>{c.forma}</span>{c.rotulo}</span>
-                  {d.pouco_conhecido && <span className="chip construcao">Pouco conhecido</span>}
                 </div>
-                <div style={{ fontWeight: 600, fontSize: 16, lineHeight: '22px' }}>{d.nome}</div>
-                <p style={{ color: 'var(--ink-2)', fontSize: 14, margin: '6px 0 10px' }}>{d.resumo}</p>
-                <div className="mono" style={{ fontSize: 12, color: 'var(--ink-2)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <span>{GRATUIDADE[d.gratuidade] ?? d.gratuidade}</span>
-                  <span>{d.depende_de_renda ? 'Depende de renda' : 'Independe de renda'}</span>
-                  <span>{d.exige_inss ? 'Exige INSS' : 'Sem contribuição ao INSS'}</span>
-                  {d.automatico && <span>Concessão automática</span>}
-                </div>
-                <div className="regua mono" style={{ fontSize: 11, color: 'var(--ink-2)' }}>
+                <h2>{d.nome}</h2>
+                {d.pouco_conhecido && <span className="chip construcao direitos-pouco">Pouco conhecido</span>}
+                <p className="direitos-resumo">{d.resumo}</p>
+                <ul className="direitos-fatos">
+                  <li>{GRATUIDADE[d.gratuidade] ?? d.gratuidade}</li>
+                  <li>{d.depende_de_renda ? 'Depende de renda' : 'Independe de renda'}</li>
+                  <li>{d.exige_inss ? 'Exige INSS' : 'Sem contribuição ao INSS'}</li>
+                  {d.automatico && <li>Concessão automática</li>}
+                </ul>
+                <div className="regua mono direitos-verificacao">
+                  <div className="trilho" aria-hidden="true" />
                   Verificado em {d.data_verificacao ?? '—'}
+                  <span className="direitos-abrir" aria-hidden="true">ver ficha →</span>
                 </div>
               </Link>
             );

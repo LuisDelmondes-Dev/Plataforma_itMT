@@ -761,3 +761,50 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .mapa-legenda-classe:hover { background:var(--surface-container-low); }
 .mapa-legenda-classe.ativa { border-color:var(--primary); background:var(--surface-container-low); color:var(--on-surface); }
 @media (max-width: 560px) { .mapa-selecao { position:static; width:100%; margin-top:10px; } }
+
+/* ============================================================
+   Mapa de Direitos — identidade da Cidadania (navy + verde)
+   ============================================================ */
+.direitos-pagina { display:grid; gap:var(--space-4); }
+.direitos-hero { position:relative; overflow:hidden; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-6); align-items:center; padding:clamp(28px,5vw,52px) clamp(20px,4vw,44px) calc(clamp(28px,5vw,52px) + 34px); color:var(--cinza-0); background:linear-gradient(140deg, var(--primary) 0 68%, #0d2f8a 100%); border-radius:var(--radius-lg); box-shadow:var(--sombra-3); }
+.direitos-hero::after { content:'§'; position:absolute; right:clamp(10px,4vw,48px); bottom:-64px; font:400 240px/1 var(--font-display); color:rgba(130,252,144,.10); pointer-events:none; }
+.direitos-hero .overline { color:var(--navy-100); }
+.direitos-hero h1 { max-width:640px; margin:10px 0 12px; font-family:var(--font-display); font-weight:400; font-size:clamp(28px,4vw,48px); line-height:1.04; letter-spacing:-.03em; }
+.direitos-hero-sub { max-width:60ch; margin:0; color:var(--navy-100); font-size:15px; line-height:1.6; }
+.direitos-hero-acoes { display:flex; flex-wrap:wrap; gap:10px; margin-top:var(--space-5); }
+.direitos-cta { background:var(--secondary-container); border-color:var(--secondary-container); color:#05240c; font-weight:700; }
+.direitos-cta:hover { background:#a5ffb0; border-color:#a5ffb0; box-shadow:0 4px 16px rgba(130,252,144,.4); }
+.direitos-cta-secundaria { background:transparent; border-color:rgba(255,255,255,.4); color:var(--cinza-0); }
+.direitos-cta-secundaria:hover { background:rgba(255,255,255,.1); }
+.direitos-cta-secundaria.ativa { background:rgba(130,252,144,.18); border-color:var(--secondary-container); }
+.direitos-selo { z-index:1; display:grid; justify-items:center; gap:2px; width:132px; aspect-ratio:1; place-content:center; text-align:center; border:1px solid rgba(130,252,144,.55); border-radius:50%; transform:rotate(-6deg); color:var(--secondary-container); }
+.direitos-selo strong { font:400 40px/1 var(--font-display); }
+.direitos-selo span { font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+.direitos-selo small { margin-top:4px; font:700 9px/1 var(--font-mono); letter-spacing:.2em; color:var(--navy-100); }
+.direitos-busca { position:relative; z-index:2; display:flex; gap:10px; width:min(680px, calc(100% - 40px)); margin:-58px auto 0; padding:16px; background:var(--surface-container-lowest); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--sombra-2); }
+.direitos-busca .campo { flex:1; min-width:0; }
+.direitos-filtros { display:flex; flex-wrap:wrap; gap:8px; }
+.direitos-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:var(--space-4); }
+.direitos-card { position:relative; display:flex; flex-direction:column; gap:8px; padding:18px 18px 14px; color:inherit; background:var(--surface-container-lowest); border:1px solid var(--border); border-top:4px solid var(--outline-variant); border-radius:var(--radius-md); text-decoration:none; transition:transform var(--motion-micro) var(--ease), box-shadow var(--motion-micro) var(--ease), border-color var(--motion-micro) var(--ease); }
+.direitos-card:hover { transform:translateY(-3px); box-shadow:var(--sombra-2); border-color:var(--primary); text-decoration:none; }
+.direitos-card:hover .direitos-abrir { opacity:1; transform:translateX(0); }
+.direitos-card.confianca-atual { border-top-color:var(--secondary); }
+.direitos-card.confianca-construcao { border-top-color:var(--on-tertiary-container); }
+.direitos-card.confianca-defasado { border-top-color:var(--outline); }
+.direitos-card.confianca-sem-dado { border-top-color:var(--error); }
+.direitos-card-topo { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.direitos-area { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--primary); }
+.direitos-card h2 { margin:0; font-size:18px; line-height:24px; font-weight:650; }
+.direitos-pouco { align-self:flex-start; }
+.direitos-resumo { margin:0; color:var(--on-surface-variant); font-size:14px; line-height:21px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.direitos-fatos { display:flex; flex-wrap:wrap; gap:4px 12px; margin:auto 0 0; padding:8px 0 0; list-style:none; border-top:1px dashed var(--outline-variant); }
+.direitos-fatos li { position:relative; padding-left:14px; font-size:12px; color:var(--on-surface-variant); }
+.direitos-fatos li::before { content:'✓'; position:absolute; left:0; color:var(--secondary); font-weight:700; }
+.direitos-verificacao { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--ink-2); }
+.direitos-verificacao .trilho { margin-bottom:0; width:32px; }
+.direitos-abrir { margin-left:auto; color:var(--primary); font-weight:700; opacity:0; transform:translateX(-4px); transition:opacity var(--motion-micro) var(--ease), transform var(--motion-micro) var(--ease); }
+@media (max-width: 720px) {
+  .direitos-hero { grid-template-columns:1fr; }
+  .direitos-selo { display:none; }
+  .direitos-busca { flex-direction:column; margin-top:-46px; }
+}
