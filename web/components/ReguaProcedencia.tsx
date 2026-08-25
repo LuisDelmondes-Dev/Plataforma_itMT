@@ -1,9 +1,8 @@
 import type { Procedencia } from '@/lib/api';
+import { formatarData } from '@/lib/format';
 
-function dataBr(iso: string) {
-  const d = iso.slice(0, 10).split('-');
-  return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : iso;
-}
+/** As citações da Xingú carregam o quinteto sem a data de extração. */
+type ProcedenciaExibivel = Omit<Procedencia, 'data_extracao'> & { data_extracao?: string };
 
 /**
  * Régua de procedência — elemento-assinatura do Meridiano (PRD §15.0).
@@ -14,7 +13,7 @@ export function ReguaProcedencia({
   procedencia,
   animada = false,
 }: {
-  procedencia: Procedencia[];
+  procedencia: ProcedenciaExibivel[];
   animada?: boolean;
 }) {
   const p = procedencia[0];
@@ -32,8 +31,7 @@ export function ReguaProcedencia({
         )}
         {' · ref. '}
         {p.data_referencia.slice(0, 4)}
-        {' · extraído em '}
-        {dataBr(p.data_extracao)}
+        {p.data_extracao ? ` · extraído em ${formatarData(p.data_extracao)}` : ''}
         {' · lic. '}
         {p.licenca}
         {' · '}

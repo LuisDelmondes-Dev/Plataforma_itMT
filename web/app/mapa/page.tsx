@@ -83,9 +83,9 @@ export default function PaginaMapa() {
     apiGet<Destaque[]>('/indicadores/destaque?limite=12&detalhe=1')
       .then((d) => { setIndicadores(d); if (d.length) setIndicadorId(d[0].id); })
       .catch(() => setErro('Falha ao carregar o catálogo.'));
-    apiGet<Municipio[]>('/municipios')
+    apiGet<Municipio[]>('/municipios', { revalidate: 3600 })
       .then((ms) => setNomes(new Map(ms.map((m) => [m.codigo_ibge, m.nome]))))
-      .catch(() => {});
+      .catch(() => setErro('Falha ao carregar os nomes dos municípios.'));
   }, []);
 
   // Anos disponíveis do indicador (série no recorte estadual).
@@ -94,6 +94,8 @@ export default function PaginaMapa() {
     setAno(null);
     apiGet<{ pontos: { ano: number }[] }>(`/indicadores/${indicadorId}/serie?recorte=ESTADO`)
       .then((s) => setAnos(s.pontos.map((p) => p.ano)))
+      // Sem série não há seletor de ano, mas o mapa segue com a referência
+      // mais recente — ausência de série não é erro fatal (RN-005).
       .catch(() => setAnos([]));
   }, [indicadorId]);
 

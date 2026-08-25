@@ -46,9 +46,9 @@ export default function PaginaPainel() {
         setKpis(rs.filter(Boolean) as Resultado[]);
       })
       .catch((e) => setErro(e.message));
-    apiGet<Municipio[]>('/municipios')
+    apiGet<Municipio[]>('/municipios', { revalidate: 3600 })
       .then((ms) => setNomes(new Map(ms.map((m) => [m.codigo_ibge, m.nome]))))
-      .catch(() => {});
+      .catch(() => setErro('Falha ao carregar os nomes dos municípios.'));
   }, []);
 
   useEffect(() => {
@@ -137,19 +137,21 @@ export default function PaginaPainel() {
         {/* Ranking municipal */}
         <div className="card">
           <div className="card-header"><span className="title-md">Maiores valores municipais</span></div>
-          <table className="dados" style={{ width: '100%' }}>
-            <caption style={{ display: 'none' }}>Dez maiores municípios em {indicadorSel?.nome}</caption>
-            <thead><tr><th scope="col">#</th><th scope="col">Município</th><th scope="col" style={{ textAlign: 'right' }}>{mapa?.unidade}</th></tr></thead>
-            <tbody>
-              {ranking.top.map((m, i) => (
-                <tr key={m.codigo_ibge}>
-                  <td className="mono-sm">{i + 1}</td>
-                  <td><Link href={`/municipio/${m.codigo_ibge}`}>{nomes.get(m.codigo_ibge) ?? m.codigo_ibge}</Link></td>
-                  <td className="num mono-sm">{fmt.format(m.valor)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="tabela-rolagem">
+            <table className="dados" style={{ width: '100%' }}>
+              <caption className="sr-only">Dez maiores municípios em {indicadorSel?.nome}</caption>
+              <thead><tr><th scope="col">#</th><th scope="col">Município</th><th scope="col" style={{ textAlign: 'right' }}>{mapa?.unidade}</th></tr></thead>
+              <tbody>
+                {ranking.top.map((m, i) => (
+                  <tr key={m.codigo_ibge}>
+                    <td className="mono-sm">{i + 1}</td>
+                    <td><Link href={`/municipio/${m.codigo_ibge}`}>{nomes.get(m.codigo_ibge) ?? m.codigo_ibge}</Link></td>
+                    <td className="num mono-sm">{fmt.format(m.valor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <p className="label-md" style={{ color: 'var(--on-surface-variant)', marginTop: 8 }}>
             {ranking.total} municípios com dado · fonte {mapa?.municipios[0]?.fonte ?? '—'}
           </p>
@@ -158,18 +160,20 @@ export default function PaginaPainel() {
         {/* Menores valores */}
         <div className="card">
           <div className="card-header"><span className="title-md">Menores valores municipais</span></div>
-          <table className="dados" style={{ width: '100%' }}>
-            <caption style={{ display: 'none' }}>Cinco menores municípios em {indicadorSel?.nome}</caption>
-            <thead><tr><th scope="col">Município</th><th scope="col" style={{ textAlign: 'right' }}>{mapa?.unidade}</th></tr></thead>
-            <tbody>
-              {ranking.base.map((m) => (
-                <tr key={m.codigo_ibge}>
-                  <td><Link href={`/municipio/${m.codigo_ibge}`}>{nomes.get(m.codigo_ibge) ?? m.codigo_ibge}</Link></td>
-                  <td className="num mono-sm">{fmt.format(m.valor)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="tabela-rolagem">
+            <table className="dados" style={{ width: '100%' }}>
+              <caption className="sr-only">Cinco menores municípios em {indicadorSel?.nome}</caption>
+              <thead><tr><th scope="col">Município</th><th scope="col" style={{ textAlign: 'right' }}>{mapa?.unidade}</th></tr></thead>
+              <tbody>
+                {ranking.base.map((m) => (
+                  <tr key={m.codigo_ibge}>
+                    <td><Link href={`/municipio/${m.codigo_ibge}`}>{nomes.get(m.codigo_ibge) ?? m.codigo_ibge}</Link></td>
+                    <td className="num mono-sm">{fmt.format(m.valor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <p className="label-md" style={{ marginTop: 8 }}>
             <Link href="/mapa">Ver a distribuição completa no mapa →</Link>
           </p>

@@ -4,6 +4,8 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { REGIAO } from '@/lib/regiao';
 import { ModoPesquisa, SeletorModoPesquisa } from '@/components/SeletorModoPesquisa';
+import { ReguaProcedencia } from '@/components/ReguaProcedencia';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 interface Citacao {
   fonte: string;
@@ -172,15 +174,11 @@ function XinguConteudo() {
         </div>
         <SeletorModoPesquisa ativo="xingu" onChange={mudarModo} compacto />
       </section>
-      <div className="overline">IA Xingú</div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Pergunte aos dados de {REGIAO.nome}
-      </h1>
-      <p style={{ color: 'var(--ink-2)' }}>
-        A Xingú traduz a sua pergunta em um plano de consulta — exibido antes da resposta —
-        e executa no motor determinístico. Nenhum número vem do modelo de linguagem: cada
-        valor é auditado contra o resultado da consulta antes de aparecer aqui.
-      </p>
+      <CabecalhoPagina
+        overline="IA Xingú"
+        titulo={`Pergunte aos dados de ${REGIAO.nome}`}
+        descricao="A Xingú traduz a sua pergunta em um plano de consulta — exibido antes da resposta — e executa no motor determinístico. Nenhum número vem do modelo de linguagem: cada valor é auditado contra o resultado da consulta antes de aparecer aqui."
+      />
 
       {situacao && situacao.llm !== 'ATIVO' && (
         <div className="aviso" role="status" style={{ marginTop: 8 }}>
@@ -238,20 +236,8 @@ function XinguConteudo() {
 
                 {m.dados?.citacoes?.length
                   ? m.dados.citacoes.map((c, ci) => (
-                      <div key={ci} className="regua" style={{ marginTop: 10 }}>
-                        <div className="trilho" aria-hidden="true" />
-                        <div className="legenda">
-                          {c.url ? (
-                            <a href={c.url} target="_blank" rel="noreferrer">{c.fonte}</a>
-                          ) : (
-                            c.fonte
-                          )}
-                          {' · ref. '}{c.data_referencia.slice(0, 4)}
-                          {' · '}{c.licenca}
-                          {' · '}
-                          <span className="mono" title={c.hash}>{c.hash.slice(0, 12)}…</span>
-                        </div>
-                      </div>
+                      // Mesmo componente da consulta — a régua é uma só (fotografia 24/08).
+                      <ReguaProcedencia key={ci} procedencia={[c]} />
                     ))
                   : null}
 

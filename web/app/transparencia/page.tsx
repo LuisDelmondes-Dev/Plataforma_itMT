@@ -1,4 +1,5 @@
 import { apiGet } from '@/lib/api';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 interface Fonte {
   id: number;
@@ -16,42 +17,41 @@ export const dynamic = 'force-dynamic';
 
 /** RF-ADMIN-007: transparência do próprio sistema. */
 export default async function Transparencia() {
-  const fontes = await apiGet<Fonte[]>('/fontes').catch(() => [] as Fonte[]);
+  const fontes = await apiGet<Fonte[]>('/fontes'); // falha propaga ao error.tsx (RN-005)
   return (
     <div style={{ maxWidth: 900 }}>
-      <div className="overline">Transparência</div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Inventário de bases e política de dados
-      </h1>
+      <CabecalhoPagina overline="Transparência" titulo="Inventário de bases e política de dados" />
 
       <h2 style={{ fontSize: 24, lineHeight: '32px', fontWeight: 600 }}>Inventário de bases</h2>
       <p style={{ color: 'var(--ink-2)' }}>
         Toda fonte tem base legal e licença registradas antes do primeiro byte ser coletado
         (RG-06). Sem base legal, o conector não executa — a regra falha o pipeline, não avisa.
       </p>
-      <table className="dados">
-        <caption style={{ display: 'none' }}>Fontes de dados da plataforma</caption>
-        <thead>
-          <tr>
-            <th scope="col">Fonte</th>
-            <th scope="col">Base legal</th>
-            <th scope="col">Licença</th>
-            <th scope="col">Periodicidade</th>
-            <th scope="col">Última carga</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fontes.map((f) => (
-            <tr key={f.id}>
-              <td>{f.url ? <a href={f.url}>{f.nome}</a> : f.nome}</td>
-              <td className="mono" style={{ fontSize: 12 }}>{f.base_legal}</td>
-              <td style={{ fontSize: 13 }}>{f.licenca}</td>
-              <td className="mono" style={{ fontSize: 12 }}>{f.periodicidade ?? '—'}</td>
-              <td className="mono" style={{ fontSize: 12 }}>{f.ultima_carga?.slice(0, 10) ?? '—'}</td>
+      <div className="tabela-rolagem">
+        <table className="dados">
+          <caption className="sr-only">Fontes de dados da plataforma</caption>
+          <thead>
+            <tr>
+              <th scope="col">Fonte</th>
+              <th scope="col">Base legal</th>
+              <th scope="col">Licença</th>
+              <th scope="col">Periodicidade</th>
+              <th scope="col">Última carga</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {fontes.map((f) => (
+              <tr key={f.id}>
+                <td>{f.url ? <a href={f.url}>{f.nome}</a> : f.nome}</td>
+                <td className="mono" style={{ fontSize: 12 }}>{f.base_legal}</td>
+                <td style={{ fontSize: 13 }}>{f.licenca}</td>
+                <td className="mono" style={{ fontSize: 12 }}>{f.periodicidade ?? '—'}</td>
+                <td className="mono" style={{ fontSize: 12 }}>{f.ultima_carga?.slice(0, 10) ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <h2 style={{ fontSize: 24, lineHeight: '32px', fontWeight: 600, marginTop: 32 }}>
         Política de privacidade

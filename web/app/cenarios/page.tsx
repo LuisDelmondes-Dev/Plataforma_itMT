@@ -88,7 +88,9 @@ export default function PaginaCenarios() {
     apiGet<Destaque[]>('/indicadores/destaque?limite=12&detalhe=1')
       .then((d) => { setCatalogo(d); if (d.length) setIndicadorId(d[0].id); })
       .catch((e) => setErro(e.message));
-    apiGet<Municipio[]>('/municipios').then(setMunicipios).catch(() => {});
+    apiGet<Municipio[]>('/municipios', { revalidate: 3600 })
+      .then(setMunicipios)
+      .catch(() => setErro('Falha ao carregar os municípios.'));
   }, []);
 
   useEffect(() => {
@@ -174,7 +176,7 @@ export default function PaginaCenarios() {
           <div className="card" style={{ marginTop: 16, overflowX: 'auto' }}>
             <div className="card-header"><span className="title-md">Valores por cenário ({dados.unidade})</span></div>
             <table className="dados" style={{ width: '100%' }}>
-              <caption style={{ display: 'none' }}>Valores projetados por cenário e ano</caption>
+              <caption className="sr-only">Valores projetados por cenário e ano</caption>
               <thead>
                 <tr>
                   <th scope="col">Cenário</th>

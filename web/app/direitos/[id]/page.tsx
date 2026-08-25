@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { apiGet } from '@/lib/api';
+import { apiGet, ErroApi } from '@/lib/api';
 import { AREAS, CONFIANCA, GRATUIDADE } from '@/lib/direitos';
 
 export const dynamic = 'force-dynamic';
@@ -57,8 +57,15 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 /** Ficha completa do §6 do prompt mestre — campo a campo, com procedência. */
 export default async function FichaDireito(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const d = await apiGet<Ficha>(`/direitos/${params.id}`).catch(() => null);
-  if (!d) notFound();
+  // 404 real → not-found; qualquer OUTRA falha propaga ao error.tsx — antes,
+  // API fora do ar virava "ficha não existe", o contrário de RN-005.
+  let d: Ficha;
+  try {
+    d = await apiGet<Ficha>(`/direitos/${params.id}`);
+  } catch (e) {
+    if (e instanceof ErroApi && e.tipo === 'nao-encontrado') notFound();
+    throw e;
+  }
   const c = CONFIANCA[d.confianca] ?? CONFIANCA.NECESSITA_CONFIRMACAO;
 
   return (
@@ -125,17 +132,19 @@ export default async function FichaDireito(props: { params: Promise<{ id: string
 
       {d.condicoes.length > 0 && (
         <Secao titulo="Doenças e condições associadas — sem automatismo">
-          <table className="dados">
-            <thead><tr><th scope="col">Condição</th><th scope="col">O que observar</th></tr></thead>
-            <tbody>
-              {d.condicoes.map((cd) => (
-                <tr key={cd.nome}>
-                  <td>{cd.nome}</td>
-                  <td style={{ fontSize: 13 }}>{cd.observacao ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="tabela-rolagem">
+            <table className="dados">
+              <thead><tr><th scope="col">Condição</th><th scope="col">O que observar</th></tr></thead>
+              <tbody>
+                {d.condicoes.map((cd) => (
+                  <tr key={cd.nome}>
+                    <td>{cd.nome}</td>
+                    <td style={{ fontSize: 13 }}>{cd.observacao ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Secao>
       )}
 

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
-
-const TOKEN_STORAGE = 'itmt.documentos.token:v1';
+import { DialogoTexto } from '@/components/Dialogo';
+import { obterToken, salvarToken as persistirToken } from '@/lib/sessao';
 
 interface Pendente {
   id: string;
@@ -46,8 +46,14 @@ export default function CuradoriaDocumental() {
   const [aviso, setAviso] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
+  // Fluxo de decisão em duas etapas (justificativa → texto revisado quando
+  // não houve extração), via diálogo acessível — antes era window.prompt.
+  const [pendenteDecisao, setPendenteDecisao] = useState<
+    { item: Pendente; tipo: 'APROVADO' | 'REJEITADO'; justificativa?: string } | null
+  >(null);
+
   useEffect(() => {
-    try { setToken(sessionStorage.getItem(TOKEN_STORAGE) ?? ''); } catch { /* storage indisponível (ex.: modo privado): começa sem token */ }
+    setToken(obterToken('documentos'));
   }, []);
 
   async function carregarFila(tokenAtual = token) {
@@ -65,7 +71,7 @@ export default function CuradoriaDocumental() {
 
   function salvarToken(valor: string) {
     setToken(valor);
-    try { sessionStorage.setItem(TOKEN_STORAGE, valor); } catch { /* storage indisponível (ex.: modo privado): sessão segue sem persistir */ }
+    persistirToken('documentos', valor);
   }
 
   async function enviar(e: FormEvent<HTMLFormElement>) {
@@ -97,18 +103,13 @@ export default function CuradoriaDocumental() {
     await carregarFila();
   }
 
-  async function decidir(item: Pendente, decisao: 'APROVADO' | 'REJEITADO') {
-    const justificativa = window.prompt(
-      decisao === 'APROVADO'
-        ? 'Justificativa da aprovação (mínimo 10 caracteres):'
-        : 'Motivo da rejeição (mínimo 10 caracteres):',
-    );
-    if (!justificativa) return;
-    let texto_revisado: string | undefined;
-    if (decisao === 'APROVADO' && !item.texto_amostra) {
-      texto_revisado = window.prompt('Nenhum texto foi extraído. Insira o conteúdo revisado para indexação:') ?? undefined;
-      if (!texto_revisado) return;
-    }
+  async function executarDecisao(
+    item: Pendente,
+    decisao: 'APROVADO' | 'REJEITADO',
+    justificativa: string,
+    texto_revisado?: string,
+  ) {
+    setPendenteDecisao(null);
     setOcupado(true); setAviso('');
     const r = await fetch(`/api/v1/admin/documentos/versoes/${item.versao_id}/revisao`, {
       method: 'POST',
@@ -119,6 +120,17 @@ export default function CuradoriaDocumental() {
     if (!r.ok) { setAviso(await corpoErro(r)); return; }
     setAviso(decisao === 'APROVADO' ? 'Documento revisado, indexado e publicado.' : 'Documento rejeitado.');
     await carregarFila();
+  }
+
+  function aoConfirmarJustificativa(texto: string) {
+    if (!pendenteDecisao || texto.length < 10) return;
+    const { item, tipo } = pendenteDecisao;
+    if (tipo === 'APROVADO' && !item.texto_amostra) {
+      // Segunda etapa: sem extração automática, a revisão insere o conteúdo.
+      setPendenteDecisao({ item, tipo, justificativa: texto });
+      return;
+    }
+    void executarDecisao(item, tipo, texto);
   }
 
   return (
@@ -211,8 +223,8 @@ export default function CuradoriaDocumental() {
                     disabled={ocupado || item.seguranca !== 'LIMPO' || item.extracao !== 'PROCESSADO'}
                     title={item.seguranca !== 'LIMPO' || item.extracao !== 'PROCESSADO'
                       ? 'A aprovação só é liberada após antivírus e extração.' : undefined}
-                    onClick={() => decidir(item, 'APROVADO')}>Revisar e aprovar</button>
-                  <button className="btn" disabled={ocupado} onClick={() => decidir(item, 'REJEITADO')}>Rejeitar</button>
+                    onClick={() => setPendenteDecisao({ item, tipo: 'APROVADO' })}>Revisar e aprovar</button>
+                  <button className="btn" disabled={ocupado} onClick={() => setPendenteDecisao({ item, tipo: 'REJEITADO' })}>Rejeitar</button>
                 </div>
               </article>
             ))}
@@ -220,6 +232,33 @@ export default function CuradoriaDocumental() {
           </div>
         </section>
       </div>
+
+      <DialogoTexto
+        aberto={Boolean(pendenteDecisao && pendenteDecisao.justificativa === undefined)}
+        titulo={pendenteDecisao?.tipo === 'APROVADO' ? 'Aprovar documento' : 'Rejeitar documento'}
+        rotuloCampo={
+          pendenteDecisao?.tipo === 'APROVADO'
+            ? 'Justificativa da aprovação (mínimo 10 caracteres)'
+            : 'Motivo da rejeição (mínimo 10 caracteres)'
+        }
+        multilinha
+        minimo={10}
+        rotuloConfirmar={pendenteDecisao?.tipo === 'APROVADO' ? 'Continuar' : 'Rejeitar'}
+        aoConfirmar={aoConfirmarJustificativa}
+        aoFechar={() => setPendenteDecisao(null)}
+      />
+      <DialogoTexto
+        aberto={Boolean(pendenteDecisao?.justificativa !== undefined)}
+        titulo="Conteúdo revisado para indexação"
+        rotuloCampo="Nenhum texto foi extraído automaticamente. Insira o conteúdo revisado:"
+        multilinha
+        rotuloConfirmar="Aprovar e publicar"
+        aoConfirmar={(texto) => {
+          if (pendenteDecisao?.justificativa)
+            void executarDecisao(pendenteDecisao.item, 'APROVADO', pendenteDecisao.justificativa, texto);
+        }}
+        aoFechar={() => setPendenteDecisao(null)}
+      />
     </div>
   );
 }

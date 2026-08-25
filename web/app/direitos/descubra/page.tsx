@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { AREAS } from '@/lib/direitos';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 interface DireitoRef { id: number; nome: string; area: string }
 interface Resultado {
@@ -86,15 +87,17 @@ export default function Descubra() {
 
   return (
     <div style={{ maxWidth: 860 }}>
-      <div className="overline"><Link href="/direitos">Mapa de Direitos</Link></div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Descubra os seus direitos
-      </h1>
-      <p style={{ color: 'var(--ink-2)', maxWidth: 700 }}>
-        Marque o que vale para você. Não pedimos nome, CPF, renda em valores nem diagnóstico —
-        o cruzamento é determinístico e o que depende de renda, laudo ou perícia aparece como
-        <strong> “precisa de avaliação”</strong>, nunca como promessa.
-      </p>
+      <CabecalhoPagina
+        overline={<Link href="/direitos">Mapa de Direitos</Link>}
+        titulo="Descubra os seus direitos"
+        descricao={
+          <>
+            Marque o que vale para você. Não pedimos nome, CPF, renda em valores nem diagnóstico
+            — o cruzamento é determinístico e o que depende de renda, laudo ou perícia aparece
+            como <strong>“precisa de avaliação”</strong>, nunca como promessa.
+          </>
+        }
+      />
 
       <form onSubmit={consultar} className="card" style={{ marginTop: 16 }}>
         <label style={{ display: 'block', maxWidth: 220, marginBottom: 12 }}>

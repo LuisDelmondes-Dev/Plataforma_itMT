@@ -1,6 +1,8 @@
 import { apiGet } from '@/lib/api';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { CesiumTilesViewer } from '@/components/CesiumTilesViewer';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
+import { TabelaDados } from '@/components/TabelaDados';
 
 interface Produto {
   id: number; tipo: string; formato: string | null; caminho: string;
@@ -18,9 +20,11 @@ export const dynamic = 'force-dynamic';
 /** Geoportal (RF-GEO-001..009): produtos publicados, cobertura de rua e estruturantes. */
 export default async function Geoportal() {
   const [produtos, cobertura, estruturantes] = await Promise.all([
-    apiGet<Produto[]>('/geo/produtos').catch(() => []),
-    apiGet<Cobertura[]>('/geo/cobertura-rua').catch(() => []),
-    apiGet<Estruturante[]>('/geo/estruturantes').catch(() => []),
+    // Sem catch silencioso: falha de fonte propaga para o error.tsx —
+    // "fonte fora do ar" nunca pode parecer "não há produtos" (RN-005).
+    apiGet<Produto[]>('/geo/produtos'),
+    apiGet<Cobertura[]>('/geo/cobertura-rua'),
+    apiGet<Estruturante[]>('/geo/estruturantes'),
   ]);
   const porMunicipio = new Map<string, Produto[]>();
   for (const p of produtos) porMunicipio.set(p.municipio, [...(porMunicipio.get(p.municipio) ?? []), p]);
@@ -31,21 +35,16 @@ export default async function Geoportal() {
 
   return (
     <div>
-      <div className="overline">Geoportal</div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Produtos do levantamento aéreo
-      </h1>
-      <p style={{ color: 'var(--ink-2)', maxWidth: 720 }}>
-        Ortomosaicos, modelos digitais e curvas de nível em SIRGAS 2000, com sensor, GSD,
-        acurácia declarada, responsável técnico e autorizações de voo registradas em cada
-        produto. Produto restrito ou classificado é bloqueado na publicação pelo banco.
-      </p>
+      <CabecalhoPagina
+        overline="Geoportal"
+        titulo="Produtos do levantamento aéreo"
+        descricao="Ortomosaicos, modelos digitais e curvas de nível em SIRGAS 2000, com sensor, GSD, acurácia declarada, responsável técnico e autorizações de voo registradas em cada produto. Produto restrito ou classificado é bloqueado na publicação pelo banco."
+      />
 
       {[...porMunicipio.entries()].map(([mun, ps]) => (
         <div key={mun} className="card" style={{ marginTop: 16 }}>
           <div className="overline">{mun}</div>
-          <table className="dados" style={{ marginTop: 8 }}>
-            <caption style={{ display: 'none' }}>Produtos geográficos de {mun}</caption>
+          <TabelaDados legenda={`Produtos geográficos de ${mun}`}>
             <thead>
               <tr>
                 <th scope="col">Produto</th><th scope="col">Voo</th><th scope="col">Sensor</th>
@@ -66,7 +65,7 @@ export default async function Geoportal() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </TabelaDados>
           <p className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 0 }}>
             RT {ps[0].responsavel_tecnico} · aut. voo {ps[0].autorizacao_voo}
           </p>
@@ -107,8 +106,7 @@ export default async function Geoportal() {
       <h2 style={{ fontSize: 24, lineHeight: '32px', fontWeight: 600, marginTop: 32 }}>
         Projetos estruturantes
       </h2>
-      <table className="dados">
-        <caption style={{ display: 'none' }}>Projetos estruturantes mapeados</caption>
+      <TabelaDados legenda="Projetos estruturantes mapeados">
         <thead>
           <tr><th scope="col">Projeto</th><th scope="col">Tipo</th><th scope="col">Município</th><th scope="col">Coordenadas</th></tr>
         </thead>
@@ -122,7 +120,7 @@ export default async function Geoportal() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </TabelaDados>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { apiGet } from '@/lib/api';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 interface Celula {
   codigo_ibge: string;
@@ -18,7 +19,9 @@ export const dynamic = 'force-dynamic';
  * Semáforo: forma + rótulo + cor (§15.1).
  */
 export default async function Cobertura() {
-  const celulas = await apiGet<Celula[]>('/cobertura').catch(() => [] as Celula[]);
+  // Falha propaga para o error.tsx: antes, API fora do ar virava uma
+  // matriz vazia muda — o oposto de "ausência é resposta" (RN-005).
+  const celulas = await apiGet<Celula[]>('/cobertura');
   const municipios = [...new Map(celulas.map((c) => [c.codigo_ibge, c.municipio])).entries()];
   const temas = [...new Map(celulas.map((c) => [c.tema_id, c.tema])).entries()].sort(
     (a, b) => a[0] - b[0],
@@ -36,49 +39,48 @@ export default async function Cobertura() {
 
   return (
     <div>
-      <div className="overline">Cobertura</div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Matriz de disponibilidade
-      </h1>
-      <p style={{ color: 'var(--ink-2)', maxWidth: 720 }}>
-        O que existe, com que data — e o que ainda não existe. A ausência de dado é uma
-        resposta legítima (RN-005); esta matriz é o compromisso público com essa honestidade.
-      </p>
+      <CabecalhoPagina
+        overline="Cobertura"
+        titulo="Matriz de disponibilidade"
+        descricao="O que existe, com que data — e o que ainda não existe. A ausência de dado é uma resposta legítima (RN-005); esta matriz é o compromisso público com essa honestidade."
+      />
       <p style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <ChipSemaforo status="DISPONIVEL" /> <ChipSemaforo status="DEFASADO" />{' '}
         <ChipSemaforo status="SEM_FONTE" />
       </p>
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-        <table className="dados" style={{ minWidth: 900 }}>
-          <caption style={{ display: 'none' }}>Cobertura por município e tema</caption>
-          <thead>
-            <tr>
-              <th scope="col">Município</th>
-              {temas.map(([id, nome]) => (
-                <th key={id} scope="col" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-                  {nome}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {municipios.map(([codigo, nome]) => (
-              <tr key={codigo}>
-                <th scope="row" style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                  {nome}
-                </th>
-                {temas.map(([tid]) => {
-                  const e = estadoDe(porChave.get(`${codigo}|${tid}`));
-                  return (
-                    <td key={tid} className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-                      <span aria-hidden="true" style={{ color: e.cor }}>{e.forma}</span> {e.rotulo}
-                    </td>
-                  );
-                })}
+        <div className="tabela-rolagem">
+          <table className="dados">
+            <caption className="sr-only">Cobertura por município e tema</caption>
+            <thead>
+              <tr>
+                <th scope="col">Município</th>
+                {temas.map(([id, nome]) => (
+                  <th key={id} scope="col" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                    {nome}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {municipios.map(([codigo, nome]) => (
+                <tr key={codigo}>
+                  <th scope="row" style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    {nome}
+                  </th>
+                  {temas.map(([tid]) => {
+                    const e = estadoDe(porChave.get(`${codigo}|${tid}`));
+                    return (
+                      <td key={tid} className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                        <span aria-hidden="true" style={{ color: e.cor }}>{e.forma}</span> {e.rotulo}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

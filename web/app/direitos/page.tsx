@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { apiGet } from '@/lib/api';
 import { AREAS, CONFIANCA, GRATUIDADE, type DireitoResumo } from '@/lib/direitos';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,9 +28,10 @@ export default async function Direitos(
   if (searchParams.pouco === '1') qs.set('pouco_conhecidos', '1');
 
   const [direitos, areas, publicos] = await Promise.all([
-    apiGet<DireitoResumo[]>(`/direitos${qs.toString() ? `?${qs}` : ''}`).catch(() => [] as DireitoResumo[]),
-    apiGet<AreaContagem[]>('/direitos/areas').catch(() => [] as AreaContagem[]),
-    apiGet<Publico[]>('/direitos/publicos').catch(() => [] as Publico[]),
+    // Falha propaga para o error.tsx (RN-005): fora do ar ≠ catálogo vazio.
+    apiGet<DireitoResumo[]>(`/direitos${qs.toString() ? `?${qs}` : ''}`),
+    apiGet<AreaContagem[]>('/direitos/areas', { revalidate: 3600 }),
+    apiGet<Publico[]>('/direitos/publicos', { revalidate: 3600 }),
   ]);
 
   const link = (mut: Record<string, string | undefined>) => {
@@ -44,16 +46,19 @@ export default async function Direitos(
 
   return (
     <div>
-      <div className="overline">Cidadania</div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Mapa de Direitos e Serviços Públicos Gratuitos
-      </h1>
-      <p style={{ color: 'var(--ink-2)', maxWidth: 720 }}>
-        Cada ficha traz base legal, órgão responsável, documentos, passo a passo, como recorrer
-        e a <strong>data da última verificação</strong>. Nada publica sem fonte oficial — o veto
-        é de banco, não de convenção. As classificações seguem o nível de segurança da
-        informação: confirmada, com variação local, condicionada à avaliação, jurisprudencial.
-      </p>
+      <CabecalhoPagina
+        overline="Cidadania"
+        titulo="Mapa de Direitos e Serviços Públicos Gratuitos"
+        descricao={
+          <>
+            Cada ficha traz base legal, órgão responsável, documentos, passo a passo, como
+            recorrer e a <strong>data da última verificação</strong>. Nada publica sem fonte
+            oficial — o veto é de banco, não de convenção. As classificações seguem o nível de
+            segurança da informação: confirmada, com variação local, condicionada à avaliação,
+            jurisprudencial.
+          </>
+        }
+      />
 
       <div className="card" style={{ margin: '16px 0', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
         <Link className="btn primaria" href="/direitos/descubra">✦ Descubra os seus direitos</Link>

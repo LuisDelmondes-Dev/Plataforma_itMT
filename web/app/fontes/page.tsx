@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { CampoToken } from '@/components/CampoToken';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 interface Situacao {
   atualizado: boolean;
@@ -112,48 +114,43 @@ export default function Fontes() {
   if (!autenticado) {
     return (
       <div style={{ maxWidth: 520 }}>
-        <div className="overline">Operação</div>
-        <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-          Agentes de fonte
-        </h1>
-        <p style={{ color: 'var(--ink-2)' }}>
-          Ferramenta de curadoria — não é necessária para consultar o portal: os agentes
-          buscam dados nas fontes oficiais <strong>automaticamente</strong>, nos bastidores,
-          sempre que uma consulta encontra dado ausente ou vencido.
-        </p>
-        <div className="card">
-          <label className="label-md" htmlFor="token-fontes">Token de gestão (ADMIN/CURADOR)</label>
-          <input
-            id="token-fontes"
-            className="campo"
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && carregar()}
-            style={{ marginTop: 8 }}
-          />
-          <button className="btn primaria" style={{ marginTop: 10 }} onClick={() => carregar()}>
-            Entrar
-          </button>
-          {erro && <p className="aviso" role="alert" style={{ marginTop: 10 }}>{erro}</p>}
-        </div>
+        <CabecalhoPagina
+          overline="Operação"
+          titulo="Agentes de fonte"
+          descricao={
+            <>
+              Ferramenta de curadoria — não é necessária para consultar o portal: os agentes
+              buscam dados nas fontes oficiais <strong>automaticamente</strong>, nos bastidores,
+              sempre que uma consulta encontra dado ausente ou vencido.
+            </>
+          }
+        />
+        <CampoToken
+          titulo="Acesso restrito"
+          rotulo="Token de gestão (ADMIN/CURADOR)"
+          dica="O token fica somente nesta aba do navegador."
+          erro={erro || undefined}
+          aoEnviar={(t) => { setToken(t); void carregar(t); }}
+        />
       </div>
     );
   }
 
   return (
     <div style={{ maxWidth: 960 }}>
-      <div className="overline">Operação</div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Agentes de fonte
-      </h1>
-      <p style={{ color: 'var(--ink-2)', maxWidth: 720 }}>
-        Um agente por fonte oficial. A regra de cada um: se a informação já está no banco e
-        dentro da validade, ele responde <strong>do banco</strong>; só vai à internet quando
-        falta ou venceu — e toda busca passa pelo pipeline Bronze→Prata→Ouro com procedência
-        e auditoria. Indicador novo continua nascendo <span className="mono">EM_ANALISE</span> até
-        parecer humano (RG-09). Para o público, isso roda automaticamente nos bastidores.
-      </p>
+      <CabecalhoPagina
+        overline="Operação"
+        titulo="Agentes de fonte"
+        descricao={
+          <>
+            Um agente por fonte oficial. A regra de cada um: se a informação já está no banco e
+            dentro da validade, ele responde <strong>do banco</strong>; só vai à internet quando
+            falta ou venceu — e toda busca passa pelo pipeline Bronze→Prata→Ouro com procedência
+            e auditoria. Indicador novo continua nascendo <span className="mono">EM_ANALISE</span>{' '}
+            até parecer humano (RG-09). Para o público, isso roda automaticamente nos bastidores.
+          </>
+        }
+      />
 
       {erro && <p className="aviso" role="alert">{erro}</p>}
 

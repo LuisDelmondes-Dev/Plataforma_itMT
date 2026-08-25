@@ -123,7 +123,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <div className="shell" data-recolhida={recolhida ? '1' : '0'} data-aberta={aberta ? '1' : '0'}>
       <aside className="sidebar" aria-label="Navegação principal">
         <div className="marca">
-          <Link href="/" prefetch={false} aria-label="Início — Plataforma itMT">
+          <Link href="/" aria-label="Início — Plataforma itMT">
             <Image src="/itmt-icone.png" alt="" width={36} height={37} />
             <span className="nome">Plataforma itMT</span>
           </Link>
@@ -139,7 +139,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={secao.id}
                   href={secao.href}
-                  prefetch={false}
                   className={`sidebar-item sidebar-raiz${secaoAtiva ? ' ativo' : ''}`}
                   aria-current={secaoAtiva ? 'page' : undefined}
                   title={recolhida ? secao.rotulo : undefined}
@@ -173,7 +172,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
                         <Link
                           key={item.href}
                           href={item.href}
-                          prefetch={false}
                           className={`sidebar-subitem${ativo ? ' ativo' : ''}`}
                           aria-current={ativo ? 'page' : undefined}
                         >
@@ -211,7 +209,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <Link className="marca-mobile" href="/" prefetch={false} aria-label="Início — Plataforma itMT">
+          <Link className="marca-mobile" href="/" aria-label="Início — Plataforma itMT">
             <Image className="logo-header" src="/itmt-icone.png" alt="Plataforma itMT" width={36} height={37} />
           </Link>
           <div className="contexto-pagina" aria-live="polite">

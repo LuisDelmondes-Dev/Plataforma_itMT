@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiGet, Resultado } from '@/lib/api';
+import { apiGet, ErroApi, Resultado } from '@/lib/api';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { Sparkline } from '@/components/Sparkline';
@@ -81,8 +81,14 @@ function Consulta() {
   const rascunhoInicialAplicado = useRef(false);
 
   useEffect(() => {
-    apiGet<Municipio[]>('/municipios').then(setMunicipios).catch(() => setMunicipios([]));
-    apiGet<Tema[]>('/temas').then(setTemas).catch(() => setTemas([]));
+    // Municípios e taxonomia mudam devagar: cache de 1h. Falha vira erro
+    // VISÍVEL — antes, API fora do ar deixava o passo "Local" vazio e mudo.
+    apiGet<Municipio[]>('/municipios', { revalidate: 3600 })
+      .then(setMunicipios)
+      .catch((e) => setErro(e instanceof ErroApi ? e.mensagemHumana : 'Falha ao carregar os municípios.'));
+    apiGet<Tema[]>('/temas', { revalidate: 3600 })
+      .then(setTemas)
+      .catch((e) => setErro(e instanceof ErroApi ? e.mensagemHumana : 'Falha ao carregar os temas.'));
   }, []);
 
   // RF-PORTAL-007: hidratar a consulta a partir do permalink
@@ -146,7 +152,9 @@ function Consulta() {
     setResultado(null);
     setComparacao(null);
     if (tema)
-      apiGet<Subtema[]>(`/temas/${tema.id}/subtemas`).then(setSubtemas).catch(() => setSubtemas([]));
+      apiGet<Subtema[]>(`/temas/${tema.id}/subtemas`, { revalidate: 3600 })
+        .then(setSubtemas)
+        .catch((e) => setErro(e instanceof ErroApi ? e.mensagemHumana : 'Falha ao carregar os subtemas.'));
   }, [tema]);
 
   async function consultar(sub: Subtema, comparar: string[] = livres) {
@@ -405,25 +413,27 @@ function Consulta() {
               <div className="card" style={{ marginTop: 16 }}>
                 <div className="overline">Série histórica — {serie.local}</div>
                 <Sparkline pontos={serie.pontos} unidade={serie.unidade} />
-                <table className="dados" style={{ marginTop: 12 }}>
-                  <caption className="overline" style={{ display: 'none' }}>Série histórica anual</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Ano</th>
-                      <th scope="col" style={{ textAlign: 'right' }}>Valor</th>
-                      <th scope="col">Unidade</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {serie.pontos.map((p) => (
-                      <tr key={p.ano}>
-                        <td className="mono">{p.ano}</td>
-                        <td className="num">{fmt.format(p.valor)}</td>
-                        <td>{serie.unidade}</td>
+                <div className="tabela-rolagem">
+                  <table className="dados" style={{ marginTop: 12 }}>
+                    <caption className="sr-only">Série histórica anual</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Ano</th>
+                        <th scope="col" style={{ textAlign: 'right' }}>Valor</th>
+                        <th scope="col">Unidade</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {serie.pontos.map((p) => (
+                        <tr key={p.ano}>
+                          <td className="mono">{p.ano}</td>
+                          <td className="num">{fmt.format(p.valor)}</td>
+                          <td>{serie.unidade}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
                   Cada ano vem do mesmo motor determinístico e da mesma fonte do valor acima;
                   anos sem dado são omitidos — a ausência não é zero (RN-005).
@@ -434,47 +444,49 @@ function Consulta() {
             {comparacao && (
               <div className="card" style={{ marginTop: 16 }}>
                 <div className="overline">Comparar com</div>
-                <table className="dados" style={{ marginTop: 12 }}>
-                  <caption className="overline" style={{ display: 'none' }}>
-                    Comparação territorial
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Recorte</th>
-                      <th scope="col" style={{ textAlign: 'right' }}>
-                        Valor
-                      </th>
-                      <th scope="col">Unidade</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(
-                      [
-                        ['Município', comparacao.municipio],
-                        ['Região Imediata', comparacao.regiaoImediata],
-                        ['Região Intermediária', comparacao.regiaoIntermediaria],
-                        [`Estado de ${REGIAO.nome}`, comparacao.estado],
-                      ] as const
-                    ).map(([rotulo, r]) => (
-                      <tr key={rotulo}>
-                        <td>{'local' in r && r.local ? `${rotulo} — ${r.local}` : rotulo}</td>
-                        <td className="num">
-                          {'valor' in r && r.valor !== undefined ? fmt.format(r.valor) : '—'}
-                        </td>
-                        <td>{('unidade' in r && r.unidade) || ('erro' in r && r.erro) || ''}</td>
+                <div className="tabela-rolagem">
+                  <table className="dados" style={{ marginTop: 12 }}>
+                    <caption className="sr-only">
+                      Comparação territorial
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Recorte</th>
+                        <th scope="col" style={{ textAlign: 'right' }}>
+                          Valor
+                        </th>
+                        <th scope="col">Unidade</th>
                       </tr>
-                    ))}
-                    {comparacao.municipiosLivres?.map((r, i) => (
-                      <tr key={`livre-${i}`}>
-                        <td>{'local' in r && r.local ? r.local : `Município ${livres[i]}`}</td>
-                        <td className="num">
-                          {'valor' in r && r.valor !== undefined ? fmt.format(r.valor) : '—'}
-                        </td>
-                        <td>{('unidade' in r && r.unidade) || ('erro' in r && r.erro) || ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {(
+                        [
+                          ['Município', comparacao.municipio],
+                          ['Região Imediata', comparacao.regiaoImediata],
+                          ['Região Intermediária', comparacao.regiaoIntermediaria],
+                          [`Estado de ${REGIAO.nome}`, comparacao.estado],
+                        ] as const
+                      ).map(([rotulo, r]) => (
+                        <tr key={rotulo}>
+                          <td>{'local' in r && r.local ? `${rotulo} — ${r.local}` : rotulo}</td>
+                          <td className="num">
+                            {'valor' in r && r.valor !== undefined ? fmt.format(r.valor) : '—'}
+                          </td>
+                          <td>{('unidade' in r && r.unidade) || ('erro' in r && r.erro) || ''}</td>
+                        </tr>
+                      ))}
+                      {comparacao.municipiosLivres?.map((r, i) => (
+                        <tr key={`livre-${i}`}>
+                          <td>{'local' in r && r.local ? r.local : `Município ${livres[i]}`}</td>
+                          <td className="num">
+                            {'valor' in r && r.valor !== undefined ? fmt.format(r.valor) : '—'}
+                          </td>
+                          <td>{('unidade' in r && r.unidade) || ('erro' in r && r.erro) || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
                   Agregações seguem o TipoAgregacao do indicador (RN-003): estoques somam,
                   taxas são recalculadas de numerador e denominador — nunca somadas.

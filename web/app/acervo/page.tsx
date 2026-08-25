@@ -1,4 +1,5 @@
 import { apiGet } from '@/lib/api';
+import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 interface Ativo {
   id: number; tipo: string; titulo: string; autor: string; licenca: string;
@@ -14,19 +15,15 @@ export default async function Acervo(props: { searchParams: Promise<{ q?: string
   const qs = new URLSearchParams();
   if (searchParams.q) qs.set('q', searchParams.q);
   if (searchParams.tipo) qs.set('tipo', searchParams.tipo);
-  const ativos = await apiGet<Ativo[]>(`/midia/acervo?${qs.toString()}`).catch(() => []);
+  const ativos = await apiGet<Ativo[]>(`/midia/acervo?${qs.toString()}`); // falha propaga (RN-005)
 
   return (
     <div>
-      <div className="overline">MT Imagens · Vídeos</div>
-      <h1 style={{ fontSize: 32, lineHeight: '40px', fontWeight: 600, margin: '8px 0' }}>
-        Acervo audiovisual dos municípios
-      </h1>
-      <p style={{ color: 'var(--ink-2)', maxWidth: 720 }}>
-        Todo ativo publicado carrega autor, licença explícita e — quando há pessoa
-        identificável — termo de consentimento arquivado. Imagem de via pública só entra
-        após anonimização verificada. Vídeos sempre com legenda e transcrição.
-      </p>
+      <CabecalhoPagina
+        overline="MT Imagens · Vídeos"
+        titulo="Acervo audiovisual dos municípios"
+        descricao="Todo ativo publicado carrega autor, licença explícita e — quando há pessoa identificável — termo de consentimento arquivado. Imagem de via pública só entra após anonimização verificada. Vídeos sempre com legenda e transcrição."
+      />
       <form style={{ display: 'flex', gap: 8, margin: '16px 0', maxWidth: 560 }}>
         <input className="campo" name="q" defaultValue={searchParams.q ?? ''} placeholder="Buscar por título ou tag…" aria-label="Buscar no acervo" />
         <button className="btn primaria" type="submit">Buscar</button>

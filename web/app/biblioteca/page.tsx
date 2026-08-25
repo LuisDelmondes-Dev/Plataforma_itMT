@@ -54,10 +54,11 @@ export default async function Biblioteca(props: { searchParams: Promise<{ q?: st
   const q = params.q?.trim() ?? '';
   const qs = new URLSearchParams();
   if (params.tipo) qs.set('tipo', params.tipo);
+  // Falha propaga para o error.tsx (RN-005): fora do ar ≠ acervo vazio.
   const [documentos, busca] = await Promise.all([
-    apiGet<Documento[]>(`/documentos?${qs}`).catch(() => []),
+    apiGet<Documento[]>(`/documentos?${qs}`),
     q.length >= 2
-      ? apiGet<Busca>(`/documentos/busca?q=${encodeURIComponent(q)}`).catch(() => null)
+      ? apiGet<Busca>(`/documentos/busca?q=${encodeURIComponent(q)}`)
       : Promise.resolve(null),
   ]);
 

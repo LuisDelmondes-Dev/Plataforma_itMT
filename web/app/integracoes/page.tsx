@@ -1,8 +1,9 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-
-const TOKEN_STORAGE = 'itmt.integracoes.token:v1';
+import { CampoToken } from '@/components/CampoToken';
+import { Dialogo } from '@/components/Dialogo';
+import { obterToken, salvarToken } from '@/lib/sessao';
 
 interface ChaveApi {
   id: string;
@@ -36,9 +37,11 @@ export default function Integracoes() {
   const [aviso, setAviso] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [autenticado, setAutenticado] = useState(false);
+  const [chaveParaRevogar, setChaveParaRevogar] = useState<ChaveApi | null>(null);
 
   useEffect(() => {
-    try { setToken(sessionStorage.getItem(TOKEN_STORAGE) ?? ''); } catch { /* storage indisponível (ex.: modo privado): começa sem token */ }
+    const salvo = obterToken('integracoes');
+    if (salvo) setToken(salvo);
   }, []);
 
   async function carregar(tokenAtual = token) {
@@ -51,7 +54,7 @@ export default function Integracoes() {
     if (!r.ok) { setAutenticado(false); setAviso(await mensagemErro(r)); return; }
     setChaves(await r.json());
     setAutenticado(true);
-    try { sessionStorage.setItem(TOKEN_STORAGE, tokenAtual); } catch { /* storage indisponível (ex.: modo privado): sessão segue sem persistir */ }
+    salvarToken('integracoes', tokenAtual);
   }
 
   async function criar(e: FormEvent<HTMLFormElement>) {
@@ -88,7 +91,7 @@ export default function Integracoes() {
   }
 
   async function revogar(chave: ChaveApi) {
-    if (!window.confirm(`Revogar definitivamente a chave “${chave.nome}”?`)) return;
+    setChaveParaRevogar(null);
     setOcupado(true); setAviso('');
     const r = await fetch(`/api/v1/parceiros/chaves/${chave.id}/revogar`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}` },
@@ -105,15 +108,14 @@ export default function Integracoes() {
         <div className="overline">Portal de parceiros · Fase 2</div>
         <h1>Integrações e API</h1>
         <p>Crie credenciais com escopo e quota próprios para consumir dados publicados da plataforma.</p>
-        <section className="card integracoes-login">
-          <label htmlFor="token-integracoes">Token de parceiro, universidade ou administrador</label>
-          <input id="token-integracoes" className="campo" type="password" value={token}
-            onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && carregar()}
-            autoComplete="off" />
-          <button className="btn primaria" disabled={!token || ocupado} onClick={() => carregar()}>Acessar credenciais</button>
-          <small>O token de sessão fica somente nesta aba.</small>
-        </section>
-        {aviso && <div className="aviso" role="alert">{aviso}</div>}
+        <CampoToken
+          titulo="Acesso restrito"
+          rotulo="Token de parceiro, universidade ou administrador"
+          dica="O token de sessão fica somente nesta aba."
+          ocupado={ocupado}
+          erro={aviso || undefined}
+          aoEnviar={(t) => { setToken(t); void carregar(t); }}
+        />
       </div>
     );
   }
@@ -177,7 +179,7 @@ export default function Integracoes() {
                   <div><dt>Limite por minuto</dt><dd>{chave.quota_minuto}</dd></div>
                   <div><dt>Último uso</dt><dd>{chave.ultimo_uso_em ? new Date(chave.ultimo_uso_em).toLocaleString('pt-BR') : 'Nunca'}</dd></div>
                 </dl>
-                {chave.status === 'ATIVA' && <button className="btn" disabled={ocupado} onClick={() => revogar(chave)}>Revogar chave</button>}
+                {chave.status === 'ATIVA' && <button className="btn" disabled={ocupado} onClick={() => setChaveParaRevogar(chave)}>Revogar chave</button>}
               </article>
             ))}
             {chaves.length === 0 && <div className="biblioteca-vazio"><strong>Nenhuma credencial</strong><p>Gere uma chave para iniciar a integração.</p></div>}
@@ -190,6 +192,20 @@ export default function Integracoes() {
         <pre><code>{`curl https://SEU_DOMINIO/api/v1/integracoes/temas \\\n  -H "X-API-Key: SUA_CHAVE"`}</code></pre>
         <p>Os cabeçalhos <code>X-RateLimit-Remaining-Minute</code> e <code>X-RateLimit-Remaining-Day</code> informam o saldo disponível.</p>
       </section>
+
+      <Dialogo
+        aberto={Boolean(chaveParaRevogar)}
+        titulo="Revogar chave"
+        destrutivo
+        rotuloConfirmar="Revogar definitivamente"
+        aoConfirmar={() => { if (chaveParaRevogar) void revogar(chaveParaRevogar); }}
+        aoFechar={() => setChaveParaRevogar(null)}
+      >
+        <p>
+          A chave <strong>{chaveParaRevogar?.nome}</strong> deixará de funcionar imediatamente e a
+          revogação não pode ser desfeita.
+        </p>
+      </Dialogo>
     </div>
   );
 }

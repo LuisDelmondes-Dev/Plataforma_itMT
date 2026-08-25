@@ -30,7 +30,9 @@ export default async function FichaMunicipal(props: { params: Promise<{ codigo: 
 
   // RF-PORTAL-011: os indicadores da ficha vêm do catálogo (os publicados
   // que têm dado), não de uma lista fixa de ids.
-  const chave = await apiGet<number[]>('/indicadores/destaque?limite=4').catch(() => [] as number[]);
+  // Falha do catálogo propaga ao error.tsx (RN-005); a falha POR indicador,
+  // logo abaixo, degrada por cartão — a página nunca mente "sem destaque".
+  const chave = await apiGet<number[]>('/indicadores/destaque?limite=4');
   const resultados = await Promise.all(
     chave.map((id) =>
       apiGet<Resultado>(
