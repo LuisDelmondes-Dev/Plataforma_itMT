@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { apiPost, ErroApi } from '@/lib/api';
 import { AREAS } from '@/lib/direitos';
 import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
@@ -34,31 +36,63 @@ const FLAGS: { chave: string; rotulo: string }[] = [
  * nunca são decididos aqui — viram "precisa de avaliação".
  */
 export default function Descubra() {
+  // useSearchParams exige Suspense no App Router
+  return (
+    <Suspense fallback={<div className="skeleton" style={{ height: 320 }} />}>
+      <DescubraConteudo />
+    </Suspense>
+  );
+}
+
+function DescubraConteudo() {
+  const router = useRouter();
+  const params = useSearchParams();
   const [idade, setIdade] = useState<string>('');
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [resultado, setResultado] = useState<Resultado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const perfilUrlAplicado = useRef(false);
 
-  async function consultar(e: React.FormEvent) {
-    e.preventDefault();
+  async function executar(perfilFlags: Record<string, boolean>, perfilIdade: string) {
     setCarregando(true);
     setErro(null);
     try {
-      const perfil: Record<string, unknown> = { ...flags };
-      if (idade !== '') perfil.idade = Number(idade);
-      const r = await fetch('/api/v1/direitos/descubra', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(perfil),
-      });
-      if (!r.ok) throw new Error((await r.json().catch(() => null))?.message ?? `Falha (${r.status}).`);
-      setResultado(await r.json());
+      const perfil: Record<string, unknown> = { ...perfilFlags };
+      if (perfilIdade !== '') perfil.idade = Number(perfilIdade);
+      setResultado(await apiPost<Resultado>('/direitos/descubra', perfil));
+      // Permalink do resultado (Onda C): o perfil — nunca dados pessoais
+      // além de idade e situações — vira URL recuperável e imprimível.
+      const q = new URLSearchParams();
+      if (perfilIdade !== '') q.set('idade', perfilIdade);
+      const ativas = Object.keys(perfilFlags).filter((c) => perfilFlags[c]);
+      if (ativas.length) q.set('s', ativas.join(','));
+      router.replace(`/direitos/descubra${q.toString() ? `?${q}` : ''}`, { scroll: false });
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Falha na consulta.');
+      setErro(e instanceof ErroApi ? e.mensagemHumana : e instanceof Error ? e.message : 'Falha na consulta.');
     } finally {
       setCarregando(false);
     }
+  }
+
+  // Permalink de entrada: ?idade=&s=flag1,flag2 restaura o perfil e refaz
+  // o cruzamento (motor determinístico: mesmo perfil ⇒ mesmo resultado).
+  useEffect(() => {
+    if (perfilUrlAplicado.current) return;
+    perfilUrlAplicado.current = true;
+    const sUrl = params.get('s');
+    const idadeUrl = params.get('idade') ?? '';
+    if (!sUrl && !idadeUrl) return;
+    const flagsUrl: Record<string, boolean> = {};
+    for (const c of (sUrl ?? '').split(',')) if (FLAGS.some((f) => f.chave === c)) flagsUrl[c] = true;
+    setFlags(flagsUrl);
+    setIdade(/^\d{1,3}$/.test(idadeUrl) ? idadeUrl : '');
+    void executar(flagsUrl, /^\d{1,3}$/.test(idadeUrl) ? idadeUrl : '');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function consultar(e: React.FormEvent) {
+    e.preventDefault();
+    void executar(flags, idade);
   }
 
   const Lista = ({ itens, titulo, chip, extra }: {
@@ -125,7 +159,16 @@ export default function Descubra() {
       {erro && <p className="aviso" role="alert" style={{ marginTop: 12 }}>{erro}</p>}
 
       {resultado && (
-        <div aria-live="polite">
+        <div aria-live="polite" className="descubra-resultado">
+          <div className="nao-imprimir" style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button type="button" className="btn primaria" onClick={() => window.print()}>
+              Imprimir esta lista
+            </button>
+            <span style={{ alignSelf: 'center', fontSize: 12, color: 'var(--ink-3)' }}>
+              É o papel para levar ao CRAS ou ao órgão responsável — o link desta página
+              recupera o mesmo resultado.
+            </span>
+          </div>
           <Lista itens={resultado.provaveis} titulo="Direitos prováveis" chip="atual" />
           <Lista itens={resultado.precisam_avaliacao} titulo="Precisam de avaliação" chip="construcao"
             extra={(d) => d.criterios_a_verificar} />

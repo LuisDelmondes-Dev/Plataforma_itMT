@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiGet, ErroApi, Resultado } from '@/lib/api';
 import { ComboboxMunicipio } from '@/components/ComboboxMunicipio';
 import { TermoExplicado } from '@/components/TermoExplicado';
+import { GraficoBarras } from '@/components/GraficoBarras';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { Sparkline } from '@/components/Sparkline';
@@ -112,7 +113,16 @@ function Consulta() {
   useEffect(() => {
     if (pSub && subtemas.length && !subtema && local) {
       const s = subtemas.find((x) => String(x.id) === pSub);
-      if (s && s.status === 'DISPONIVEL') consultar(s);
+      if (s && s.status === 'DISPONIVEL') {
+        // ?comparar= restaura os municípios livres direto do permalink —
+        // passado explicitamente para não correr contra o setState.
+        const compararUrl = (params.get('comparar') ?? '')
+          .split(',')
+          .filter((c) => /^\d{7}$/.test(c))
+          .slice(0, 4);
+        if (compararUrl.length) setLivres(compararUrl);
+        consultar(s, compararUrl.length ? compararUrl : undefined);
+      }
     }
   }, [pSub, subtemas]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -140,12 +150,22 @@ function Consulta() {
     setBusca(pRascunho);
   }, [pRascunho, pQ, pMun, local, busca]);
 
-  // Permalink estável e compartilhável para a combinação atual
-  function atualizarUrl(l: Municipio | null, t: Tema | null, st: Subtema | null) {
+  // Permalink estável e compartilhável para a combinação atual — Onda C:
+  // agora inclui indicador e municípios comparados (antes o link perdia
+  // metade do estado).
+  function atualizarUrl(
+    l: Municipio | null,
+    t: Tema | null,
+    st: Subtema | null,
+    ind?: Indicador | null,
+    comparar?: string[],
+  ) {
     const q = new URLSearchParams();
     if (l) q.set('municipio', l.codigo_ibge);
     if (t) q.set('tema', String(t.id));
     if (st) q.set('subtema', String(st.id));
+    if (ind) q.set('indicador', String(ind.id));
+    if (comparar?.length) q.set('comparar', comparar.join(','));
     router.replace(`/consulta?${q.toString()}`, { scroll: false });
   }
 
@@ -180,8 +200,11 @@ function Consulta() {
         return;
       }
       // Multi-indicador (A2): o primeiro é o padrão; o seletor troca sem
-      // refazer a busca de subtema.
-      await carregarIndicador(inds[0], comparar);
+      // refazer a busca de subtema. Se o permalink pediu um indicador
+      // específico deste subtema, ele tem precedência.
+      const indUrl = Number(params.get('indicador')) || null;
+      const alvo = (indUrl && inds.find((i) => i.id === indUrl)) || inds[0];
+      await carregarIndicador(alvo, comparar, sub);
     } catch (e: unknown) {
       setErro(e instanceof Error ? e.message : 'A consulta falhou.');
       setCarregando(false);
@@ -191,7 +214,7 @@ function Consulta() {
   // Carrega um indicador específico: valor + comparação territorial + série
   // histórica (A2). A série reusa o motor ano a ano, cada ponto sob as
   // mesmas regras de agregação (RN-003).
-  async function carregarIndicador(ind: Indicador, comparar: string[] = livres) {
+  async function carregarIndicador(ind: Indicador, comparar: string[] = livres, sub: Subtema | null = subtema) {
     if (!local) return;
     setIndicadorAtual(ind);
     setResultado(null);
@@ -199,6 +222,7 @@ function Consulta() {
     setSerie(null);
     setErro(null);
     setCarregando(true);
+    atualizarUrl(local, tema, sub, ind, comparar);
     try {
       const extra = comparar.length ? `&municipios=${comparar.join(',')}` : '';
       const [res, comp, ser] = await Promise.all([
@@ -429,6 +453,37 @@ function Consulta() {
             {comparacao && (
               <div className="card" style={{ marginTop: 16 }}>
                 <div className="overline">Comparar com</div>
+                {/* Barras proporcionais AO LADO da tabela (Onda C): encoding
+                    visual sem substituir a forma citável/acessível. */}
+                <GraficoBarras
+                  unidade={resultado?.unidade}
+                  barras={[
+                    {
+                      rotulo: ('local' in comparacao.municipio && comparacao.municipio.local) || 'Município',
+                      valor: 'valor' in comparacao.municipio && comparacao.municipio.valor !== undefined ? comparacao.municipio.valor : null,
+                      destaque: true,
+                    },
+                    {
+                      rotulo: 'Região Imediata',
+                      valor: 'valor' in comparacao.regiaoImediata && comparacao.regiaoImediata.valor !== undefined ? comparacao.regiaoImediata.valor : null,
+                    },
+                    {
+                      rotulo: 'Região Intermediária',
+                      valor: 'valor' in comparacao.regiaoIntermediaria && comparacao.regiaoIntermediaria.valor !== undefined ? comparacao.regiaoIntermediaria.valor : null,
+                    },
+                    {
+                      rotulo: `Estado de ${REGIAO.nome}`,
+                      valor: 'valor' in comparacao.estado && comparacao.estado.valor !== undefined ? comparacao.estado.valor : null,
+                    },
+                    ...(comparacao.municipiosLivres ?? []).map((r, i) => ({
+                      rotulo:
+                        ('local' in r && r.local) ||
+                        municipios.find((x) => x.codigo_ibge === livres[i])?.nome ||
+                        'Município comparado',
+                      valor: 'valor' in r && r.valor !== undefined ? r.valor : null,
+                    })),
+                  ]}
+                />
                 <div className="tabela-rolagem">
                   <table className="dados" style={{ marginTop: 12 }}>
                     <caption className="sr-only">

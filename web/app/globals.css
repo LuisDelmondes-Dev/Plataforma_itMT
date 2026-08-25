@@ -688,3 +688,42 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .xingu-conversa-item > button:first-child { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .xingu-conversa-excluir { flex:none; width:28px; min-height:28px; border:0; border-radius:6px; background:transparent; color:var(--outline); cursor:pointer; }
 .xingu-conversa-excluir:hover { color:var(--error); background:var(--surface-container-low); }
+
+/* ============================================================
+   Visualização da Onda C (24/08/2026)
+   ============================================================ */
+:root { --serie-1:#6b7280; --serie-2:#006e28; --serie-3:#b45309; --serie-4:#3a6ea5; --serie-5:#8b5cf6; }
+.grafico-linha { position:relative; }
+.grafico-linha svg:focus-visible { outline:var(--focus-espessura) solid var(--focus-cor); outline-offset:2px; }
+.grafico-tooltip { position:absolute; top:4px; transform:translateX(-50%); z-index:20; display:grid; gap:2px; padding:8px 10px; pointer-events:none; font-size:12px; line-height:17px; background:var(--surface-container-lowest); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--sombra-1); white-space:nowrap; }
+.grafico-tooltip-forma { font-weight:700; }
+.grafico-legenda { display:flex; flex-wrap:wrap; gap:6px 16px; margin-top:6px; font-size:12px; color:var(--on-surface-variant); }
+
+.grafico-barras { display:grid; gap:6px; margin-top:10px; }
+.grafico-barras-linha { display:grid; grid-template-columns:minmax(90px, 160px) 1fr; align-items:center; gap:8px; font-size:12px; }
+.grafico-barras-rotulo { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--on-surface-variant); }
+.grafico-barras-trilho { display:flex; align-items:center; gap:8px; min-width:0; }
+.grafico-barras-barra { height:12px; border-radius:2px; background:var(--mapa-3); flex:none; transition:width var(--motion-standard) var(--ease); }
+.grafico-barras-barra.destaque { background:var(--dado-observado); }
+.grafico-barras-valor { font-variant-numeric:tabular-nums; color:var(--on-surface); white-space:nowrap; }
+.grafico-barras-ausente { color:var(--outline); }
+
+/* Folha de impressão do "Descubra os seus direitos": o papel que o
+   cidadão leva ao CRAS — sem shell, sem formulário, só o resultado. */
+@media print {
+  .sidebar, .topo, .sidebar-overlay, .skip-link, .banner-offline,
+  .nao-imprimir, .modo-pesquisa-contextual, form { display:none !important; }
+  .principal { margin-left:0 !important; }
+  body { background:#fff; }
+  .card { box-shadow:none; border:1px solid #999; break-inside:avoid; }
+  a { color:#000; text-decoration:none; }
+  a[href^='/direitos/']::after { content:' (itmt — ficha ' attr(href) ')'; font-size:10px; color:#555; }
+}
+
+.heatmap-cobertura th.heatmap-tema { max-width:92px; font-size:10px; white-space:normal; line-height:13px; vertical-align:bottom; }
+.heatmap-cobertura td.heatmap-celula { text-align:center; font-size:14px; padding:6px 4px; cursor:default; }
+.heatmap-cobertura td.heatmap-celula:hover { background:var(--surface-container-high); }
+
+.ficha-colunas { margin-top:24px; }
+@media (max-width: 760px) { .ficha-colunas { grid-template-columns:1fr !important; } }
+.mini-mapa { display:grid; gap:8px; justify-items:start; margin-top:8px; }

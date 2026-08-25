@@ -6,12 +6,14 @@
  * municipal e cobertura. Tudo do motor determinístico; nenhum número
  * nasce aqui (RG-03), e município ausente é ausência (RN-005).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiGet, Resultado } from '@/lib/api';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
 import { REGIAO } from '@/lib/regiao';
 import { Sparkline } from '@/components/Sparkline';
+import { GraficoBarras } from '@/components/GraficoBarras';
 
 interface Destaque { id: number; nome: string; unidade: string; tema: string }
 interface LinhaMapa { codigo_ibge: string; valor: number; data_referencia: string; fonte: string }
@@ -24,6 +26,17 @@ interface Cobertura { municipio: string; tema: string; estado: string }
 const fmt = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 
 export default function PaginaPainel() {
+  // useSearchParams exige Suspense no App Router
+  return (
+    <Suspense fallback={<div className="skeleton" style={{ height: 300 }} />}>
+      <Painel />
+    </Suspense>
+  );
+}
+
+function Painel() {
+  const router = useRouter();
+  const params = useSearchParams();
   const [catalogo, setCatalogo] = useState<Destaque[]>([]);
   const [kpis, setKpis] = useState<Resultado[]>([]);
   const [sel, setSel] = useState<number | null>(null);
@@ -34,10 +47,12 @@ export default function PaginaPainel() {
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
+    // ?foco= é a fonte de verdade do indicador em destaque (permalink).
+    const focoUrl = Number(params.get('foco')) || null;
     apiGet<Destaque[]>('/indicadores/destaque?limite=12&detalhe=1')
       .then(async (d) => {
         setCatalogo(d);
-        if (d.length) setSel(d[0].id);
+        if (d.length) setSel(focoUrl && d.some((i) => i.id === focoUrl) ? focoUrl : d[0].id);
         const rs = await Promise.all(
           d.map((i) =>
             apiGet<Resultado>(`/indicadores/${i.id}/consulta?recorte=ESTADO&codigo=51`).catch(() => null),
@@ -95,7 +110,10 @@ export default function PaginaPainel() {
             role="tab"
             aria-selected={sel === c.id}
             className="chip"
-            onClick={() => setSel(c.id)}
+            onClick={() => {
+              setSel(c.id);
+              router.replace(`/painel?foco=${c.id}`, { scroll: false });
+            }}
             style={{
               cursor: 'pointer',
               background: sel === c.id ? 'var(--primary)' : undefined,
@@ -152,6 +170,13 @@ export default function PaginaPainel() {
               </tbody>
             </table>
           </div>
+          <GraficoBarras
+            unidade={mapa?.unidade}
+            barras={ranking.top.map((m) => ({
+              rotulo: nomes.get(m.codigo_ibge) ?? m.codigo_ibge,
+              valor: m.valor,
+            }))}
+          />
           <p className="label-md" style={{ color: 'var(--on-surface-variant)', marginTop: 8 }}>
             {ranking.total} municípios com dado · fonte {mapa?.municipios[0]?.fonte ?? '—'}
           </p>
@@ -174,8 +199,15 @@ export default function PaginaPainel() {
               </tbody>
             </table>
           </div>
+          <GraficoBarras
+            unidade={mapa?.unidade}
+            barras={ranking.base.map((m) => ({
+              rotulo: nomes.get(m.codigo_ibge) ?? m.codigo_ibge,
+              valor: m.valor,
+            }))}
+          />
           <p className="label-md" style={{ marginTop: 8 }}>
-            <Link href="/mapa">Ver a distribuição completa no mapa →</Link>
+            <Link href={sel ? `/mapa?indicador=${sel}` : '/mapa'}>Ver a distribuição completa no mapa →</Link>
           </p>
         </div>
 
