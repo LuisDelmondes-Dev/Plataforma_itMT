@@ -272,7 +272,9 @@ table.dados tbody tr:nth-child(even) { background:var(--surface-container-low); 
 table.dados tbody tr:hover { background:var(--surface-container-high); }
 table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 
-.conteudo-principal { max-width:1200px; margin:0 auto; padding:24px; }
+/* Respiro entre a sidebar e o conteúdo (referência aprovada em 25/08):
+   ~44px nas laterais em telas largas, afinando gradualmente no mobile. */
+.conteudo-principal { max-width:1200px; margin:0 auto; padding:28px clamp(16px, 3.4vw, 44px) 32px; }
 .rail { width:320px; flex:none; }
 @media (max-width: 720px) {
   .conteudo-principal { padding:14px; }
