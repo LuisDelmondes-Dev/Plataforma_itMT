@@ -18,7 +18,7 @@ export function CartaoIndicador({
     <div className="card">
       <div className="overline">{resultado.indicador}</div>
       <div className="kpi" style={{ marginTop: 8 }}>
-        {fmt.format(resultado.valor)}
+        {fmt.format(resultado.valor)}{' '}
         <span className="unidade">{resultado.unidade}</span>
       </div>
       {resultado.municipios_agregados ? (

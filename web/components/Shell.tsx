@@ -233,7 +233,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         >
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
-        <main id="conteudo" tabIndex={-1} style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
+        <main id="conteudo" className="conteudo-principal" tabIndex={-1}>
           {children}
         </main>
       </div>

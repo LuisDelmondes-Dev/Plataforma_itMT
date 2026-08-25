@@ -210,8 +210,10 @@ a:hover { color: var(--primary-container); text-decoration: underline; }
 .card { background:var(--surface-container-lowest); border:1px solid var(--border); border-radius:var(--radius-md); padding:20px; }
 .card-header { background:var(--surface-container-low); margin:-20px -20px 16px; padding:14px 20px; border-bottom:1px solid var(--border); border-radius:var(--radius-md) var(--radius-md) 0 0; }
 
-.kpi { font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; font-size:40px; line-height:44px; font-weight:700; letter-spacing:-0.01em; color:var(--on-surface); }
-.kpi .unidade { font-size:16px; color:var(--on-surface-variant); margin-left:6px; font-weight:400; }
+/* O número nunca sai do card: tamanho fluido, a unidade quebra de linha
+   quando precisa e, no limite, o próprio número pode quebrar. */
+.kpi { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:8px; min-width:0; font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; font-size:clamp(26px, 2.6vw, 40px); line-height:1.1; font-weight:700; letter-spacing:-0.01em; color:var(--on-surface); overflow-wrap:anywhere; }
+.kpi .unidade { font-size:16px; color:var(--on-surface-variant); font-weight:400; }
 
 .regua { margin-top:12px; padding-top:10px; border-top:1px solid var(--border); }
 /* O trilho da régua de procedência — o elemento-assinatura. A classe era
@@ -270,7 +272,12 @@ table.dados tbody tr:nth-child(even) { background:var(--surface-container-low); 
 table.dados tbody tr:hover { background:var(--surface-container-high); }
 table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 
+.conteudo-principal { max-width:1200px; margin:0 auto; padding:24px; }
 .rail { width:320px; flex:none; }
+@media (max-width: 720px) {
+  .conteudo-principal { padding:14px; }
+  .rail { width:100%; }
+}
 .rail .passo { border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface-container-lowest); padding:16px; margin-bottom:12px; }
 .rail .passo h2 { margin:0 0 8px; font-size:14px; line-height:20px; font-weight:600; display:flex; align-items:center; gap:8px; }
 .rail .passo .n { font-size:12px; font-weight:600; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; border-radius:var(--radius-full); border:1px solid var(--outline-variant); color:var(--on-surface-variant); flex:none; }
@@ -701,11 +708,19 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .grafico-barras { display:grid; gap:6px; margin-top:10px; }
 .grafico-barras-linha { display:grid; grid-template-columns:minmax(90px, 160px) 1fr; align-items:center; gap:8px; font-size:12px; }
 .grafico-barras-rotulo { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--on-surface-variant); }
-.grafico-barras-trilho { display:flex; align-items:center; gap:8px; min-width:0; }
-.grafico-barras-barra { height:12px; border-radius:2px; background:var(--mapa-3); flex:none; transition:width var(--motion-standard) var(--ease); }
+/* O valor reserva a própria coluna: a barra (largura %) vive na coluna
+   flexível e nunca empurra o texto para fora do card. */
+.grafico-barras-trilho { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; min-width:0; }
+.grafico-barras-barra { height:12px; border-radius:2px; background:var(--mapa-3); justify-self:start; transition:width var(--motion-standard) var(--ease); }
 .grafico-barras-barra.destaque { background:var(--dado-observado); }
 .grafico-barras-valor { font-variant-numeric:tabular-nums; color:var(--on-surface); white-space:nowrap; }
 .grafico-barras-ausente { color:var(--outline); }
+/* Em telas estreitas o rótulo sobe para a própria linha — barra e valor
+   ganham a largura inteira e nada sai do card. */
+@media (max-width: 560px) {
+  .grafico-barras-linha { grid-template-columns:1fr; gap:2px; }
+  .grafico-barras-rotulo { white-space:normal; }
+}
 
 /* Folha de impressão do "Descubra os seus direitos": o papel que o
    cidadão leva ao CRAS — sem shell, sem formulário, só o resultado. */

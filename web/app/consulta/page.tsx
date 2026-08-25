@@ -360,7 +360,7 @@ function Consulta() {
       </aside>
 
       {/* Canvas de resultado */}
-      <section style={{ flex: 1, minWidth: 320 }}>
+      <section style={{ flex: 1, minWidth: 'min(320px, 100%)' }}>
         {local && (
           <nav
             className="mono"
