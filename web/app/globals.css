@@ -263,9 +263,8 @@ a:hover { color: var(--primary-container); text-decoration: underline; }
 table.dados { width:100%; border-collapse:collapse; }
 table.dados caption { text-align:left; padding-bottom:8px; }
 table.dados th, table.dados td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); font-size:14px; line-height:20px; }
-/* No fluxo da página o th gruda ABAIXO do header fixo do app (antes colidia
-   atrás dele); dentro de .tabela-rolagem, o contêiner é a referência. */
-table.dados th { position:sticky; top:var(--header-alt); background:var(--surface-container-low); font-weight:600; color:var(--on-surface-variant); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
+/* Sem header fixo, o th gruda no topo da janela ou do contêiner de rolagem. */
+table.dados th { position:sticky; top:0; background:var(--surface-container-low); font-weight:600; color:var(--on-surface-variant); font-size:12px; text-transform:uppercase; letter-spacing:0.05em; }
 .tabela-rolagem table.dados th { top:0; }
 table.dados tbody tr:nth-child(even) { background:var(--surface-container-low); }
 table.dados tbody tr:hover { background:var(--surface-container-high); }
@@ -295,16 +294,18 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
    Shell — sidebar fixa (navy institucional) + header
    ============================================================ */
 .shell { display:flex; min-height:100vh; }
-.sidebar { --focus-cor:var(--secondary-container); position:fixed; inset:0 auto 0 0; z-index:40; width:var(--sidebar-larg); background:var(--sidebar-fundo); color:rgba(255,255,255,.80); display:flex; flex-direction:column; transition:width var(--motion-standard) var(--ease), transform var(--motion-standard) var(--ease); }
-.sidebar .marca { height:var(--header-alt); display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid rgba(255,255,255,.12); }
+.sidebar { --focus-cor:var(--secondary-container); position:fixed; inset:0 auto 0 0; z-index:40; width:var(--sidebar-larg); background:linear-gradient(178deg, var(--navy-900) 0%, var(--sidebar-fundo) 62%, #001028 100%); color:rgba(255,255,255,.82); display:flex; flex-direction:column; box-shadow:inset -1px 0 0 rgba(255,255,255,.06); transition:width var(--motion-standard) var(--ease), transform var(--motion-standard) var(--ease); }
+.sidebar .marca { position:relative; height:var(--header-alt); display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid rgba(255,255,255,.10); }
+/* filete-assinatura sob a marca: o mesmo trilho da régua de procedência */
+.sidebar .marca::after { content:''; position:absolute; left:16px; bottom:-1px; height:2px; width:44px; border-radius:var(--radius-full); background:linear-gradient(90deg, var(--secondary-container) 0 62%, var(--org-acento) 62% 100%); opacity:.85; }
 .sidebar .marca a { display:flex; align-items:center; gap:10px; text-decoration:none; }
 .sidebar .marca img { height:32px; width:auto; display:block; flex:none; }
 .sidebar .marca .nome { font-weight:600; letter-spacing:-.01em; color:var(--cinza-0); white-space:nowrap; opacity:1; transition:opacity var(--motion-micro) var(--ease); }
 .sidebar nav { flex:1; overflow-y:auto; padding:14px 10px; display:flex; flex-direction:column; gap:4px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; }
 .nav-contexto { font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.42); padding:2px 12px 8px; white-space:nowrap; overflow:hidden; }
-.sidebar-item { display:flex; align-items:center; gap:12px; padding:9px 12px; border-radius:var(--radius-sm); color:rgba(255,255,255,.82); text-decoration:none; font-size:14px; font-weight:500; line-height:20px; border-left:3px solid transparent; white-space:nowrap; transition:background var(--motion-micro) var(--ease), color var(--motion-micro) var(--ease); }
-.sidebar-item:hover { background:rgba(255,255,255,.08); color:var(--cinza-0); text-decoration:none; }
-.sidebar-item.ativo { background:rgba(130,252,144,.16); color:var(--cinza-0); border-left-color:var(--secondary-container); }
+.sidebar-item { display:flex; align-items:center; gap:12px; padding:9px 12px; border-radius:10px; color:rgba(255,255,255,.82); text-decoration:none; font-size:14px; font-weight:500; line-height:20px; border-left:3px solid transparent; white-space:nowrap; transition:background var(--motion-micro) var(--ease), color var(--motion-micro) var(--ease), transform var(--motion-micro) var(--ease); }
+.sidebar-item:hover { background:rgba(255,255,255,.09); color:var(--cinza-0); text-decoration:none; transform:translateX(2px); }
+.sidebar-item.ativo { background:linear-gradient(90deg, rgba(130,252,144,.22), rgba(130,252,144,.06)); color:var(--cinza-0); border-left-color:var(--secondary-container); box-shadow:inset 0 0 0 1px rgba(130,252,144,.14); }
 .sidebar-item svg { flex:none; width:20px; height:20px; }
 .sidebar-item .rotulo { opacity:1; transition:opacity var(--motion-micro) var(--ease); }
 .sidebar-raiz { min-height:42px; }
@@ -313,9 +314,9 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .sidebar-disclosure[aria-expanded="true"] .chevron { transform:rotate(180deg); }
 .sidebar-secao[data-ativa="1"] > .sidebar-disclosure { color:var(--cinza-0); background:rgba(255,255,255,.06); }
 .sidebar-submenu { display:flex; flex-direction:column; gap:2px; margin:2px 0 6px 31px; padding-left:12px; border-left:1px solid rgba(255,255,255,.16); }
-.sidebar-subitem { position:relative; display:flex; align-items:center; gap:9px; min-height:34px; padding:6px 9px; border-radius:6px; color:rgba(255,255,255,.66); text-decoration:none; font-size:13px; line-height:18px; transition:background var(--motion-micro) var(--ease), color var(--motion-micro) var(--ease); }
-.sidebar-subitem:hover { color:var(--cinza-0); background:rgba(255,255,255,.07); text-decoration:none; }
-.sidebar-subitem.ativo { color:var(--cinza-0); background:rgba(130,252,144,.12); }
+.sidebar-subitem { position:relative; display:flex; align-items:center; gap:9px; min-height:34px; padding:6px 9px; border-radius:8px; color:rgba(255,255,255,.66); text-decoration:none; font-size:13px; line-height:18px; transition:background var(--motion-micro) var(--ease), color var(--motion-micro) var(--ease), transform var(--motion-micro) var(--ease); }
+.sidebar-subitem:hover { color:var(--cinza-0); background:rgba(255,255,255,.08); text-decoration:none; transform:translateX(2px); }
+.sidebar-subitem.ativo { color:var(--cinza-0); background:linear-gradient(90deg, rgba(130,252,144,.16), rgba(130,252,144,.04)); }
 .subitem-marca { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.3); flex:none; }
 .sidebar-subitem.ativo .subitem-marca { background:var(--secondary-container); box-shadow:0 0 0 3px rgba(130,252,144,.11); }
 .btn-recolher { margin:10px; padding:9px 12px; min-height:40px; display:flex; align-items:center; gap:12px; background:transparent; border:1px solid rgba(255,255,255,.18); border-radius:var(--radius-sm); color:rgba(255,255,255,.82); font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
@@ -333,13 +334,9 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .principal { flex:1; min-width:0; margin-left:var(--sidebar-larg); transition:margin-left var(--motion-standard) var(--ease); }
 .shell[data-recolhida="1"] .principal { margin-left:var(--sidebar-larg-recolhida); }
 
-.topo { position:sticky; top:0; z-index:30; height:var(--header-alt); display:flex; align-items:center; gap:12px; padding:0 20px; background:var(--surface-container-lowest); border-bottom:1px solid var(--border); }
-.topo .logo-header { height:clamp(24px, 4.2vw, 32px); width:auto; display:block; }
-.marca-mobile { display:none; align-items:center; }
-.contexto-pagina { display:flex; flex-direction:column; min-width:0; line-height:1.15; }
-.contexto-pagina span { color:var(--on-surface-variant); font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
-.contexto-pagina strong { margin-top:3px; color:var(--on-surface); font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.btn-hamburguer { display:none; background:transparent; border:1px solid var(--border); border-radius:var(--radius-sm); min-width:40px; min-height:40px; align-items:center; justify-content:center; cursor:pointer; color:var(--on-surface); }
+/* Sem header (Onda D+): em telas estreitas o menu abre por um botão
+   flutuante; no desktop a sidebar é a única moldura. */
+.btn-hamburguer { display:none; position:fixed; top:12px; left:12px; z-index:38; background:var(--surface-container-lowest); border:1px solid var(--border); border-radius:var(--radius-md); min-width:44px; min-height:44px; align-items:center; justify-content:center; cursor:pointer; color:var(--on-surface); box-shadow:var(--sombra-1); }
 .sidebar-overlay { display:none; }
 
 @media (max-width: 900px) {
@@ -351,7 +348,6 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
   .shell[data-recolhida="1"] .sidebar-submenu { display:flex; }
   .principal { margin-left:0 !important; }
   .btn-hamburguer { display:inline-flex; }
-  .marca-mobile { display:flex; }
   .btn-recolher { display:none; }
   .shell[data-aberta="1"] .sidebar-overlay { display:block; position:fixed; inset:0; z-index:35; background:rgba(25,28,29,.5); }
 }
@@ -402,10 +398,12 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .barra-xingu-menu button { width:100%; min-height:38px; padding:8px 10px; border:0; border-radius:9px; color:var(--on-surface); background:transparent; font:inherit; font-size:13px; text-align:left; cursor:pointer; }
 .barra-xingu-menu button:hover, .barra-xingu-menu button:focus-visible { background:var(--surface-container-low); }
 .barra-xingu-menu button.perigo { color:var(--error); border-top:1px solid var(--border); border-radius:0 0 9px 9px; }
-.barra-xingu-marca { height:46px; min-width:124px; display:flex; align-items:center; justify-content:center; padding:5px 10px; border:1px solid rgba(3,13,39,.16); border-radius:999px; background:#f7f8fa; cursor:pointer; transition:border-color var(--motion-micro) var(--ease), box-shadow var(--motion-micro) var(--ease), opacity var(--motion-micro) var(--ease); }
-.barra-xingu-marca:hover { border-color:var(--xingu-marca); box-shadow:inset 0 -3px var(--xingu-marca); }
+/* A arte da Xingú preenche o botão e acompanha o contorno da pílula
+   (overflow escondido + object-fit); hover com brilho verde-claro. */
+.barra-xingu-marca { height:46px; min-width:124px; display:flex; align-items:center; justify-content:center; padding:0; overflow:hidden; border:1px solid rgba(3,13,39,.16); border-radius:999px; background:#f7f8fa; cursor:pointer; transition:border-color var(--motion-micro) var(--ease), box-shadow var(--motion-micro) var(--ease), opacity var(--motion-micro) var(--ease); }
+.barra-xingu-marca:hover { border-color:var(--secondary-container); box-shadow:0 4px 18px rgba(130,252,144,.65), 0 0 0 3px rgba(130,252,144,.35); }
 .barra-xingu-marca:disabled { opacity:.42; cursor:not-allowed; box-shadow:none; }
-.barra-xingu-marca img { display:block; width:clamp(100px, 10vw, 116px); height:auto; max-height:37px; object-fit:contain; }
+.barra-xingu-marca img { display:block; width:100%; height:100%; object-fit:cover; border-radius:inherit; }
 .barra-xingu-icone:focus-visible, .barra-xingu-marca:focus-visible { outline:3px solid var(--ambar-foco); outline-offset:2px; }
 .xingu-compositor { position:sticky; bottom:16px; z-index:20; padding:10px 0 2px; background:linear-gradient(to bottom, transparent, var(--surface) 22%); }
 .barra-xingu-compositor { position:relative; width:100%; min-height:118px; display:flex; flex-direction:column; padding:14px 12px 10px; border:1px solid #d6d8de; border-radius:26px; background:var(--cinza-0); box-shadow:0 3px 10px rgba(24,28,36,.12), 0 14px 34px rgba(24,28,36,.08); transition:border-color var(--motion-micro) var(--ease), box-shadow var(--motion-micro) var(--ease); }
@@ -442,10 +440,8 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
   .barra-xingu-icone { width:38px; height:38px; }
   .barra-xingu-icone svg { width:20px; height:20px; }
   .barra-xingu input { height:42px; padding:0 7px; font-size:14px; }
-  .barra-xingu-marca { min-width:96px; height:40px; padding:4px 7px; }
-  .barra-xingu-marca img { width:clamp(84px, 25vw, 98px); max-height:32px; }
+  .barra-xingu-marca { min-width:96px; height:40px; }
   .xingu-compositor .barra-xingu-marca { min-width:88px; }
-  .xingu-compositor .barra-xingu-marca img { width:clamp(78px, 22vw, 90px); }
   .xingu-compositor { bottom:8px; }
   .barra-xingu-compositor { min-height:112px; padding:12px 9px 8px; border-radius:23px; }
   .barra-xingu-compositor textarea { min-height:52px; padding-inline:8px; font-size:14px; }
@@ -732,23 +728,8 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .mini-mapa { display:grid; gap:8px; justify-items:start; margin-top:8px; }
 
 /* ============================================================
-   Home com hero (Onda D)
+   Home minimalista: marca + pesquisa, centradas
    ============================================================ */
-.home { max-width:1040px; margin:0 auto; }
-.home-hero { position:relative; overflow:hidden; display:grid; grid-template-columns:minmax(0,1.25fr) minmax(200px,.75fr); gap:var(--space-6); align-items:center; padding:clamp(28px,5vw,56px); margin-top:var(--space-4); color:var(--cinza-0); background:var(--primary); border-radius:var(--radius-lg); box-shadow:var(--sombra-3); }
-.home-hero-logo { width:min(340px,70%); height:auto; filter:brightness(0) invert(1); opacity:.94; }
-.home-hero-titulo { margin:14px 0 8px; font-family:var(--font-display); font-weight:400; font-size:clamp(26px,3.6vw,44px); line-height:1.06; letter-spacing:-.03em; }
-.home-hero-sub { max-width:56ch; margin:0; color:var(--navy-100); font-size:15px; line-height:1.6; }
-.home-hero-numero { display:grid; gap:2px; margin-top:var(--space-5); padding:14px 16px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.18); border-radius:var(--radius-md); max-width:460px; }
-.home-hero-numero .overline { color:var(--navy-100); }
-.home-hero-numero strong { font-variant-numeric:tabular-nums; font-family:var(--font-display); font-weight:400; font-size:clamp(30px,4vw,44px); line-height:1.1; }
-.home-hero-numero small { font-size:14px; color:var(--navy-100); font-family:var(--font-ui); }
-.home-hero-numero .regua { border-top-color:rgba(255,255,255,.2); }
-.home-hero-numero .legenda, .home-hero-numero .regua-resumo span { color:var(--navy-100); }
-.home-hero-numero .regua-entenda { color:var(--cinza-0); }
-.home-hero-numero .regua-detalhe { background:rgba(255,255,255,.08); color:#e6ecff; border-left-color:var(--secondary-container); }
-.home-hero-numero .regua-detalhe a, .home-hero-numero .legenda a { color:var(--cinza-0); }
-.home-hero-mapa { align-self:stretch; display:flex; align-items:center; }
-.home-pesquisa { margin:var(--space-6) auto 0; max-width:760px; }
-.home-cartoes { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--space-3); margin-top:var(--space-6); }
-@media (max-width: 720px) { .home-hero { grid-template-columns:1fr; } .home-hero-mapa { display:none; } }
+.home-minima { min-height:calc(100vh - 160px); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:var(--space-5); max-width:760px; margin:0 auto; padding-bottom:8vh; }
+.home-minima-logo { width:min(460px, 82vw); height:auto; }
+.home-minima .pesquisa-principal { margin-top:0; }

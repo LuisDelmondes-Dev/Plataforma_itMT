@@ -99,7 +99,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const secaoDaRota = NAV.find((secao) =>
     secao.href ? rotaAtiva(pathname, secao.href) : secao.itens?.some((item) => rotaAtiva(pathname, item.href)),
   );
-  const itemDaRota = secaoDaRota?.itens?.find((item) => rotaAtiva(pathname, item.href));
   const [secoesAbertas, setSecoesAbertas] = useState<string[]>(() =>
     secaoDaRota?.itens ? [secaoDaRota.id] : [],
   );
@@ -225,23 +224,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="sidebar-overlay" onClick={() => setAberta(false)} aria-hidden="true" />
 
       <div className="principal">
-        <header className="topo">
-          <button
-            className="btn-hamburguer"
-            onClick={() => setAberta(true)}
-            aria-label="Abrir menu de navegação"
-            aria-expanded={aberta}
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
-          </button>
-          <Link className="marca-mobile" href="/" aria-label="Início — Plataforma itMT">
-            <Image className="logo-header" src="/itmt-icone.png" alt="Plataforma itMT" width={36} height={37} />
-          </Link>
-          <div className="contexto-pagina" aria-live="polite">
-            <span>{secaoDaRota?.rotulo ?? 'Plataforma itMT'}</span>
-            <strong>{itemDaRota?.rotulo ?? secaoDaRota?.rotulo ?? 'Inteligência territorial'}</strong>
-          </div>
-        </header>
+        {/* Sem header: em telas estreitas, o menu abre por um botão flutuante. */}
+        <button
+          className="btn-hamburguer"
+          onClick={() => setAberta(true)}
+          aria-label="Abrir menu de navegação"
+          aria-expanded={aberta}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
         <main id="conteudo" tabIndex={-1} style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
           {children}
         </main>
