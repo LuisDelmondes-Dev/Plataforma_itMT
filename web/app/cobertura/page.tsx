@@ -1,6 +1,7 @@
 import { apiGet } from '@/lib/api';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { CabecalhoPagina } from '@/components/CabecalhoPagina';
+import { TermoExplicado } from '@/components/TermoExplicado';
 
 interface Celula {
   codigo_ibge: string;
@@ -42,7 +43,14 @@ export default async function Cobertura() {
       <CabecalhoPagina
         overline="Cobertura"
         titulo="Matriz de disponibilidade"
-        descricao="O que existe, com que data — e o que ainda não existe. A ausência de dado é uma resposta legítima (RN-005); esta matriz é o compromisso público com essa honestidade."
+        descricao={
+          <>
+            O que existe, com que data — e o que ainda não existe.{' '}
+            <TermoExplicado id="rn-005">A ausência de dado é uma resposta legítima</TermoExplicado>;
+            esta matriz é o compromisso público com essa honestidade. Entenda o{' '}
+            <TermoExplicado id="semaforo">semáforo</TermoExplicado> abaixo.
+          </>
+        }
       />
       <p style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <ChipSemaforo status="DISPONIVEL" /> <ChipSemaforo status="DEFASADO" />{' '}

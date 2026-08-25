@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { CampoToken } from '@/components/CampoToken';
+import { TermoExplicado } from '@/components/TermoExplicado';
 import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 
 interface Situacao {
@@ -145,9 +146,12 @@ export default function Fontes() {
           <>
             Um agente por fonte oficial. A regra de cada um: se a informação já está no banco e
             dentro da validade, ele responde <strong>do banco</strong>; só vai à internet quando
-            falta ou venceu — e toda busca passa pelo pipeline Bronze→Prata→Ouro com procedência
-            e auditoria. Indicador novo continua nascendo <span className="mono">EM_ANALISE</span>{' '}
-            até parecer humano (RG-09). Para o público, isso roda automaticamente nos bastidores.
+            falta ou venceu — e toda busca passa pelo pipeline{' '}
+            <TermoExplicado id="bronze">Bronze→Prata→Ouro</TermoExplicado> com procedência e
+            auditoria. Indicador novo continua nascendo{' '}
+            <TermoExplicado id="em_analise">em análise</TermoExplicado> até{' '}
+            <TermoExplicado id="rg-09">parecer humano</TermoExplicado>. Para o público, isso
+            roda automaticamente nos bastidores.
           </>
         }
       />

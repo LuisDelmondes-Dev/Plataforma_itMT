@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiGet, ErroApi, Resultado } from '@/lib/api';
+import { ComboboxMunicipio } from '@/components/ComboboxMunicipio';
+import { TermoExplicado } from '@/components/TermoExplicado';
 import { CartaoIndicador } from '@/components/CartaoIndicador';
 import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { Sparkline } from '@/components/Sparkline';
@@ -220,31 +222,21 @@ function Consulta() {
     }
   }
 
+  // Bug corrigido (fotografia 24/08): os efeitos ficavam DENTRO do updater
+  // do setState — em StrictMode o updater roda 2× e a requisição duplicava.
   function alternarLivre(codigo: string) {
-    setLivres((atual) => {
-      let novo: string[];
-      if (atual.includes(codigo)) novo = atual.filter((c) => c !== codigo);
-      else if (atual.length >= 4) {
-        // §15.7: além de 5 séries a UI recusa e explica
-        setErro('Comparação limitada a 4 municípios além do local (5 séries). Remova um para incluir outro.');
-        return atual;
-      } else novo = [...atual, codigo];
-      setErro(null);
-      if (indicadorAtual) carregarIndicador(indicadorAtual, novo);
-      else if (subtema) consultar(subtema, novo);
-      return novo;
-    });
+    let novo: string[];
+    if (livres.includes(codigo)) novo = livres.filter((c) => c !== codigo);
+    else if (livres.length >= 4) {
+      // §15.7: além de 5 séries a UI recusa e explica
+      setErro('Comparação limitada a 4 municípios além do local (5 séries). Remova um para incluir outro.');
+      return;
+    } else novo = [...livres, codigo];
+    setErro(null);
+    setLivres(novo);
+    if (indicadorAtual) carregarIndicador(indicadorAtual, novo);
+    else if (subtema) consultar(subtema, novo);
   }
-
-  const filtrados = busca
-    ? municipios.filter((m) =>
-        m.nome
-          .toLowerCase()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .startsWith(busca.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')),
-      )
-    : municipios;
 
   function mudarModo(modo: ModoPesquisa) {
     if (modo === 'pesquisa') return;
@@ -277,31 +269,24 @@ function Consulta() {
           <h2>
             <span className="n">1</span> Local
           </h2>
-          <input
-            className="campo"
-            placeholder="Buscar município…"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            aria-label="Buscar município"
+          <ComboboxMunicipio
+            municipios={municipios}
+            rotulo="Município"
+            texto={busca}
+            aoMudarTexto={setBusca}
+            aoSelecionar={(m) => {
+              setLocal(m);
+              setResultado(null);
+              setComparacao(null);
+            }}
           />
-          <div style={{ maxHeight: 176, overflowY: 'auto', marginTop: 8 }}>
-            {filtrados.map((m) => (
-              <button
-                key={m.codigo_ibge}
-                className={`opcao${local?.codigo_ibge === m.codigo_ibge ? ' selecionada' : ''}`}
-                onClick={() => {
-                  setLocal(m);
-                  setResultado(null);
-                  setComparacao(null);
-                }}
-              >
-                {m.nome}
-                <span className="mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>
-                  {m.codigo_ibge}
-                </span>
-              </button>
-            ))}
-          </div>
+          {local && (
+            <p className="body-md" style={{ margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="chip atual">
+                {local.nome} <span className="mono" style={{ fontSize: 11 }}>{local.codigo_ibge}</span>
+              </span>
+            </p>
+          )}
         </section>
 
         <section className={`passo ${tema ? 'feito' : local ? 'ativo' : ''}`}>
@@ -461,14 +446,17 @@ function Consulta() {
                     <tbody>
                       {(
                         [
-                          ['Município', comparacao.municipio],
-                          ['Região Imediata', comparacao.regiaoImediata],
-                          ['Região Intermediária', comparacao.regiaoIntermediaria],
-                          [`Estado de ${REGIAO.nome}`, comparacao.estado],
+                          ['Município', comparacao.municipio, undefined],
+                          ['Região Imediata', comparacao.regiaoImediata, 'rgi'],
+                          ['Região Intermediária', comparacao.regiaoIntermediaria, 'rgint'],
+                          [`Estado de ${REGIAO.nome}`, comparacao.estado, undefined],
                         ] as const
-                      ).map(([rotulo, r]) => (
+                      ).map(([rotulo, r, termo]) => (
                         <tr key={rotulo}>
-                          <td>{'local' in r && r.local ? `${rotulo} — ${r.local}` : rotulo}</td>
+                          <td>
+                            {termo ? <TermoExplicado id={termo}>{rotulo}</TermoExplicado> : rotulo}
+                            {'local' in r && r.local ? ` — ${r.local}` : ''}
+                          </td>
                           <td className="num">
                             {'valor' in r && r.valor !== undefined ? fmt.format(r.valor) : '—'}
                           </td>
@@ -477,7 +465,11 @@ function Consulta() {
                       ))}
                       {comparacao.municipiosLivres?.map((r, i) => (
                         <tr key={`livre-${i}`}>
-                          <td>{'local' in r && r.local ? r.local : `Município ${livres[i]}`}</td>
+                          <td>
+                            {'local' in r && r.local
+                              ? r.local
+                              : municipios.find((x) => x.codigo_ibge === livres[i])?.nome ?? 'Município comparado'}
+                          </td>
                           <td className="num">
                             {'valor' in r && r.valor !== undefined ? fmt.format(r.valor) : '—'}
                           </td>
@@ -488,29 +480,39 @@ function Consulta() {
                   </table>
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-                  Agregações seguem o TipoAgregacao do indicador (RN-003): estoques somam,
-                  taxas são recalculadas de numerador e denominador — nunca somadas.
+                  <TermoExplicado id="agregacao">Como o valor regional é calculado</TermoExplicado>:
+                  estoques somam, taxas são recalculadas de numerador e denominador — nunca
+                  somadas (regra RN-003 do indicador).
                 </p>
                 <div className="overline" style={{ marginTop: 8 }}>Municípios de livre escolha (até 4)</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                  {municipios
-                    .filter((m) => m.codigo_ibge !== local?.codigo_ibge)
-                    .map((m) => (
-                      <button
-                        key={m.codigo_ibge}
-                        className="chip"
-                        aria-pressed={livres.includes(m.codigo_ibge)}
-                        style={
-                          livres.includes(m.codigo_ibge)
-                            ? { background: 'var(--accent-50)', borderColor: 'var(--accent-600)', cursor: 'pointer' }
-                            : { cursor: 'pointer' }
-                        }
-                        onClick={() => alternarLivre(m.codigo_ibge)}
-                      >
-                        {m.nome}
-                      </button>
-                    ))}
+                {/* Antes: os 142 municípios re-renderizados como chips. Agora,
+                    combobox com busca + chips removíveis só do que foi escolhido. */}
+                <div style={{ maxWidth: 360, marginTop: 8 }}>
+                  <ComboboxMunicipio
+                    municipios={municipios.filter((m) => m.codigo_ibge !== local?.codigo_ibge)}
+                    rotulo="Adicionar município à comparação"
+                    desabilitados={livres}
+                    aoSelecionar={(m) => alternarLivre(m.codigo_ibge)}
+                  />
                 </div>
+                {livres.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {livres.map((codigo) => {
+                      const m = municipios.find((x) => x.codigo_ibge === codigo);
+                      return (
+                        <button
+                          key={codigo}
+                          className="chip atual"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => alternarLivre(codigo)}
+                          aria-label={`Remover ${m?.nome ?? codigo} da comparação`}
+                        >
+                          {m?.nome ?? codigo} ✕
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

@@ -651,3 +651,40 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .campo-token-linha .campo { flex:1; min-width:0; }
 .campo-token-descricao { margin:6px 0 0; color:var(--on-surface-variant); font-size:14px; }
 .campo-token-dica { color:var(--outline); }
+
+/* ============================================================
+   Didática da Onda B (24/08/2026)
+   ============================================================ */
+.termo { position:relative; display:inline-block; }
+.termo-gatilho { display:inline; min-height:24px; padding:0; border:0; background:transparent; color:inherit; font:inherit; cursor:help; text-decoration:underline dotted var(--outline); text-decoration-thickness:1px; text-underline-offset:3px; }
+.termo-gatilho:hover { text-decoration-color:var(--primary); color:var(--primary); }
+.termo-popover { position:absolute; left:0; top:calc(100% + 6px); z-index:70; display:grid; gap:6px; width:max-content; max-width:min(340px, 78vw); padding:12px 14px; text-align:left; text-transform:none; letter-spacing:normal; font-weight:400; font-size:13px; line-height:19px; color:var(--on-surface); background:var(--surface-container-lowest); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--sombra-2); }
+.termo-popover strong { font-size:13px; }
+.termo-popover .termo-longa { color:var(--on-surface-variant); }
+/* perto da borda direita, o CSS segura o estouro */
+.termo-popover { overflow-wrap:anywhere; }
+
+/* Régua expansível: fechada = 1 linha humana; aberta = frases completas */
+.regua-resumo { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.regua-entenda { min-height:24px; padding:0 4px; border:0; background:transparent; color:var(--primary); font:inherit; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+.regua-detalhe { display:grid; gap:8px; margin-top:8px; padding:12px 14px; font-size:13px; line-height:20px; color:var(--on-surface-variant); background:var(--surface-container-low); border-left:3px solid var(--primary); border-radius:0 var(--radius-sm) var(--radius-sm) 0; }
+.regua-detalhe p { margin:0; }
+.regua-fonte-extra { padding-top:8px; border-top:1px dashed var(--outline-variant); }
+
+.combobox-municipio { position:relative; }
+.combobox-municipio label { display:grid; gap:6px; }
+.combobox-lista { position:absolute; left:0; right:0; top:100%; z-index:60; margin:4px 0 0; padding:4px; list-style:none; max-height:280px; overflow-y:auto; background:var(--surface-container-lowest); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--sombra-2); }
+.combobox-opcao { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:36px; padding:6px 10px; border-radius:var(--radius-sm); font-size:14px; cursor:pointer; }
+.combobox-opcao.ativa { background:var(--surface-container-low); }
+.combobox-opcao.bloqueada { opacity:.45; cursor:not-allowed; }
+.combobox-opcao.vazia { color:var(--on-surface-variant); cursor:default; }
+.combobox-codigo { font-size:11px; color:var(--outline); }
+
+.plano-consulta { display:grid; gap:4px; padding:8px 12px; margin-bottom:6px; border:1px solid var(--border); border-left:3px solid var(--primary); border-radius:var(--radius-sm); background:var(--surface-container-low); font-size:13px; color:var(--on-surface); }
+.plano-consulta-resumo { font-weight:600; }
+.plano-consulta-tecnico summary { cursor:pointer; color:var(--outline); font-size:11px; }
+.plano-consulta-tecnico code { display:block; margin-top:4px; font-size:11px; color:var(--on-surface-variant); overflow-wrap:anywhere; }
+.xingu-conversa-item { display:flex; align-items:center; gap:2px; }
+.xingu-conversa-item > button:first-child { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.xingu-conversa-excluir { flex:none; width:28px; min-height:28px; border:0; border-radius:6px; background:transparent; color:var(--outline); cursor:pointer; }
+.xingu-conversa-excluir:hover { color:var(--error); background:var(--surface-container-low); }

@@ -6,6 +6,11 @@ import { REGIAO } from '@/lib/regiao';
 import { ModoPesquisa, SeletorModoPesquisa } from '@/components/SeletorModoPesquisa';
 import { ReguaProcedencia } from '@/components/ReguaProcedencia';
 import { CabecalhoPagina } from '@/components/CabecalhoPagina';
+import { TermoExplicado } from '@/components/TermoExplicado';
+import {
+  ativarConversa, conversaAtiva, excluirConversa, listarConversas,
+  novaConversa, salvarConversaAtiva, type ConversaXingu,
+} from '@/lib/xingu-historico';
 
 interface Citacao {
   fonte: string;
@@ -62,8 +67,28 @@ function XinguConteudo() {
   const contexto = useRef<Resposta['contexto']>(undefined);
   const fim = useRef<HTMLDivElement>(null);
   const [situacao, setSituacao] = useState<Situacao | null>(null);
+  const [conversas, setConversas] = useState<ConversaXingu<Mensagem, Resposta['contexto']>[]>([]);
   const consultaInicialAplicada = useRef(false);
+  const hidratada = useRef(false);
   const pQ = params.get('q');
+
+  // Onda B: a conversa sobrevive a recarga/navegação — hidrata do
+  // localStorage (só no cliente, evitando mismatch de SSR) e persiste a
+  // cada mensagem. Sem storage (modo privado), degrada para memória.
+  useEffect(() => {
+    const ativa = conversaAtiva<Mensagem, Resposta['contexto']>();
+    if (ativa) {
+      setMensagens(ativa.mensagens);
+      contexto.current = ativa.contexto;
+    }
+    hidratada.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hidratada.current || mensagens.length === 0) return;
+    const primeira = mensagens.find((m) => m.papel === 'usuario')?.texto ?? 'Conversa';
+    salvarConversaAtiva(mensagens, contexto.current, primeira.slice(0, 60));
+  }, [mensagens]);
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: 'smooth' }); }, [mensagens]);
 
@@ -157,12 +182,43 @@ function XinguConteudo() {
     setMenuAberto(false);
   }
 
-  function limparConversa() {
+  function limparEstado() {
     setMensagens([]);
     setTexto('');
     contexto.current = undefined;
     window.speechSynthesis?.cancel();
     setMenuAberto(false);
+  }
+
+  function comecarNova() {
+    novaConversa();
+    limparEstado();
+  }
+
+  function trocarConversa(id: string) {
+    const c = ativarConversa<Mensagem, Resposta['contexto']>(id);
+    if (c) {
+      setMensagens(c.mensagens);
+      contexto.current = c.contexto;
+    }
+    setMenuAberto(false);
+  }
+
+  function apagarConversa(id: string, ativaAgora: boolean) {
+    excluirConversa(id);
+    setConversas(listarConversas<Mensagem, Resposta['contexto']>());
+    if (ativaAgora) limparEstado();
+  }
+
+  function apagarAtual() {
+    const ativa = conversaAtiva();
+    if (ativa) excluirConversa(ativa.id);
+    limparEstado();
+  }
+
+  function abrirMenu() {
+    if (!menuAberto) setConversas(listarConversas<Mensagem, Resposta['contexto']>());
+    setMenuAberto(!menuAberto);
   }
 
   return (
@@ -215,20 +271,27 @@ function XinguConteudo() {
             </div>
           ) : (
             <div key={i} style={{ alignSelf: 'flex-start', maxWidth: '92%', width: '100%' }}>
-              {/* O plano ANTES da frase (RF-CHAT-003 / §15.7) */}
+              {/* O plano ANTES da frase (RF-CHAT-003 / §15.7) — em rótulos
+                  humanos; o formato técnico continua em <details>. */}
               {m.dados?.plano && (
-                <div
-                  className="mono"
-                  style={{
-                    fontSize: 12, lineHeight: '18px', border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)', background: 'var(--neutral-100)',
-                    padding: '8px 12px', marginBottom: 6, color: 'var(--ink-2)',
-                  }}
-                >
-                  ✛ PLANO&nbsp; recorte={m.dados.plano.recorte}
-                  {m.dados.plano.codigo ? ` codigo=${m.dados.plano.codigo}` : ''}
-                  {m.dados.plano.indicador ? ` indicador="${m.dados.plano.indicador}"` : ''}
-                  {' '}ref={m.dados.plano.periodo?.referencia}
+                <div className="plano-consulta">
+                  <span className="overline">Antes de responder, vou consultar</span>
+                  <span className="plano-consulta-resumo">
+                    {m.dados.plano.indicador ?? 'Indicador a confirmar'}
+                    {' · '}
+                    {m.dados.plano.local ?? m.dados.plano.codigo ?? REGIAO.nome}
+                    {' · '}
+                    dados de {String(m.dados.plano.periodo?.referencia ?? '').slice(0, 4) || 'referência mais recente'}
+                  </span>
+                  <details className="plano-consulta-tecnico">
+                    <summary>plano técnico</summary>
+                    <code className="mono">
+                      recorte={m.dados.plano.recorte}
+                      {m.dados.plano.codigo ? ` codigo=${m.dados.plano.codigo}` : ''}
+                      {m.dados.plano.indicador ? ` indicador="${m.dados.plano.indicador}"` : ''}
+                      {' '}ref={m.dados.plano.periodo?.referencia}
+                    </code>
+                  </details>
                 </div>
               )}
               <div className="card" style={{ padding: '12px 16px' }}>
@@ -268,9 +331,13 @@ function XinguConteudo() {
                 ) : null}
 
                 {m.dados && (
-                  <div className="mono" style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 10 }}>
-                    {m.dados.latencia_ms} ms · intérprete {m.dados.auditoria.interprete} · auditor A06:{' '}
-                    {m.dados.auditoria.vetos === 0 ? 'sem vetos' : `${m.dados.auditoria.vetos} veto(s) aplicado(s)`}
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 10 }}>
+                    Respondida em {m.dados.latencia_ms} ms · intérprete{' '}
+                    <span className="mono">{m.dados.auditoria.interprete}</span> ·{' '}
+                    <TermoExplicado id="a06">auditoria de números</TermoExplicado>:{' '}
+                    {m.dados.auditoria.vetos === 0
+                      ? 'todos os numerais conferidos, sem vetos'
+                      : `${m.dados.auditoria.vetos} veto(s) aplicado(s)`}
                   </div>
                 )}
               </div>
@@ -301,7 +368,7 @@ function XinguConteudo() {
           />
           <div className="barra-xingu-acoes">
             <div className="barra-xingu-mais">
-              <button type="button" className="barra-xingu-icone barra-xingu-adicionar" aria-label="Adicionar contexto" aria-expanded={menuAberto} aria-controls="menu-xingu-chat" onClick={() => setMenuAberto(!menuAberto)}>
+              <button type="button" className="barra-xingu-icone barra-xingu-adicionar" aria-label="Adicionar contexto" aria-expanded={menuAberto} aria-controls="menu-xingu-chat" onClick={abrirMenu}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               </button>
               {menuAberto && (
@@ -312,7 +379,28 @@ function XinguConteudo() {
                   ))}
                   <button type="button" onClick={() => setFalar(!falar)}>{falar ? 'Desativar leitura das respostas' : 'Ler respostas em voz alta'}</button>
                   <button type="button" onClick={() => mudarModo('pesquisa')}>Abrir pesquisa estruturada</button>
-                  {mensagens.length > 0 && <button type="button" className="perigo" onClick={limparConversa}>Limpar conversa</button>}
+                  {mensagens.length > 0 && <button type="button" onClick={comecarNova}>Nova conversa (guarda esta no histórico)</button>}
+                  {conversas.length > 0 && (
+                    <>
+                      <span>Conversas anteriores</span>
+                      {conversas.slice(0, 6).map((c) => (
+                        <div key={c.id} className="xingu-conversa-item">
+                          <button type="button" onClick={() => trocarConversa(c.id)} title={c.titulo}>
+                            {c.titulo}
+                          </button>
+                          <button
+                            type="button"
+                            className="xingu-conversa-excluir"
+                            aria-label={`Excluir a conversa “${c.titulo}”`}
+                            onClick={() => apagarConversa(c.id, mensagens.length > 0 && conversaAtiva()?.id === c.id)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {mensagens.length > 0 && <button type="button" className="perigo" onClick={apagarAtual}>Apagar conversa atual</button>}
                 </div>
               )}
             </div>

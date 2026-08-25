@@ -3,6 +3,7 @@ import { ChipSemaforo } from '@/components/ChipSemaforo';
 import { CesiumTilesViewer } from '@/components/CesiumTilesViewer';
 import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 import { TabelaDados } from '@/components/TabelaDados';
+import { TermoExplicado } from '@/components/TermoExplicado';
 
 interface Produto {
   id: number; tipo: string; formato: string | null; caminho: string;
@@ -38,7 +39,15 @@ export default async function Geoportal() {
       <CabecalhoPagina
         overline="Geoportal"
         titulo="Produtos do levantamento aéreo"
-        descricao="Ortomosaicos, modelos digitais e curvas de nível em SIRGAS 2000, com sensor, GSD, acurácia declarada, responsável técnico e autorizações de voo registradas em cada produto. Produto restrito ou classificado é bloqueado na publicação pelo banco."
+        descricao={
+          <>
+            Ortomosaicos, modelos digitais e curvas de nível em{' '}
+            <TermoExplicado id="sirgas">SIRGAS 2000</TermoExplicado>, com sensor,{' '}
+            <TermoExplicado id="gsd">GSD</TermoExplicado>, acurácia declarada, responsável
+            técnico e autorizações de voo registradas em cada produto. Produto restrito ou
+            classificado é bloqueado na publicação pelo banco.
+          </>
+        }
       />
 
       {[...porMunicipio.entries()].map(([mun, ps]) => (
