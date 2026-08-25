@@ -4,7 +4,13 @@ import { FormEvent, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
-export function PesquisaPrincipal() {
+export function PesquisaPrincipal({
+  aoPesquisar,
+}: {
+  /** Quando presente, a pesquisa responde NA PRÓPRIA página (modo buscador)
+      em vez de navegar para /consulta. */
+  aoPesquisar?: (termo: string) => void;
+} = {}) {
   const router = useRouter();
   const [texto, setTexto] = useState('');
   const [ouvindo, setOuvindo] = useState(false);
@@ -13,6 +19,10 @@ export function PesquisaPrincipal() {
   function enviar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const termo = texto.trim();
+    if (aoPesquisar) {
+      if (termo) aoPesquisar(termo);
+      return;
+    }
     router.push(termo ? `/consulta?q=${encodeURIComponent(termo)}` : '/consulta');
   }
 
@@ -37,7 +47,10 @@ export function PesquisaPrincipal() {
     rec.onend = () => setOuvindo(false);
     rec.onresult = (e: any) => {
       const t = e.results?.[0]?.[0]?.transcript;
-      if (t) setTexto(t);
+      if (!t) return;
+      setTexto(t);
+      // No modo buscador, falar já pesquisa — como no Google por voz.
+      aoPesquisar?.(t.trim());
     };
     rec.start();
   }

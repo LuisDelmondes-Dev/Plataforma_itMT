@@ -808,3 +808,21 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
   .direitos-selo { display:none; }
   .direitos-busca { flex-direction:column; margin-top:-46px; }
 }
+
+/* Home-buscador: após a 1ª pesquisa, a página sobe e a resposta aparece
+   embaixo — o gesto do buscador. */
+.home-minima.pesquisou { justify-content:flex-start; padding-top:4vh; padding-bottom:6vh; min-height:0; }
+.home-minima.pesquisou .home-minima-logo { width:min(200px, 48vw); }
+.home-resultados { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-4); width:100%; align-items:start; text-align:left; }
+.home-resposta { display:grid; gap:8px; min-width:0; }
+.home-resposta-texto p:first-child { margin:0 0 4px; font-size:17px; line-height:26px; }
+.home-resposta-opcoes { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.home-resposta-opcoes .btn { text-decoration:none; color:var(--ink); }
+.home-resposta-auditoria { margin-top:10px; font-size:11px; color:var(--ink-3); }
+.home-painel-municipio { display:grid; gap:4px; width:220px; padding:16px; background:var(--surface-container-lowest); border:1px solid var(--border); border-top:3px solid var(--primary); border-radius:var(--radius-md); box-shadow:var(--sombra-1); }
+.home-painel-municipio strong { font-size:18px; }
+.home-painel-codigo { font-size:11px; color:var(--outline); }
+.home-painel-acoes { display:grid; gap:8px; margin-top:10px; }
+.home-painel-acoes .btn { text-decoration:none; text-align:center; color:var(--ink); }
+.home-painel-acoes .btn.primaria { color:var(--on-primary); }
+@media (max-width: 720px) { .home-resultados { grid-template-columns:1fr; } .home-painel-municipio { width:100%; } }
