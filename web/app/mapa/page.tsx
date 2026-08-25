@@ -81,6 +81,8 @@ function Mapa() {
   const [erro, setErro] = useState<string | null>(null);
   const [vista, setVista] = useState<Vista | null>(null); // null = MT inteiro
   const [focoCodigo, setFocoCodigo] = useState<string | null>(null);
+  const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [classeAtiva, setClasseAtiva] = useState<number | null>(null); // filtro da legenda
   const refCaixa = useRef<HTMLDivElement>(null);
   const refSvg = useRef<SVGSVGElement>(null);
   const arrasto = useRef<{ px: number; py: number; vista: Vista; moveu: boolean } | null>(null);
@@ -161,11 +163,18 @@ function Mapa() {
     if (vs.length < 5) return [];
     return [1, 2, 3, 4].map((i) => vs[Math.floor((vs.length * i) / 5)]);
   }, [dados]);
-  const corDe = (v: number) => {
+  const classeDe = (v: number) => {
     let c = 0;
     for (const l of limites) if (v >= l) c++; else break;
-    return RAMPA[Math.min(c, RAMPA.length - 1)];
+    return Math.min(c, RAMPA.length - 1);
   };
+  const corDe = (v: number) => RAMPA[classeDe(v)];
+
+  // Ranking do indicador atual (para o painel de seleção).
+  const rankingDesc = useMemo(
+    () => [...(dados?.municipios ?? [])].sort((a, b) => b.valor - a.valor),
+    [dados],
+  );
 
   const proj = useMemo(() => (features.length ? projetar(features) : null), [features]);
 
@@ -225,6 +234,7 @@ function Mapa() {
     const w = Math.max(ZOOM_MIN, VB_L / 6);
     setVista({ x: c.cx - w / 2, y: c.cy - (w * razao) / 2, w });
     setFocoCodigo(codigo);
+    setSelecionado(codigo);
     // devolve o foco de teclado ao município centralizado
     requestAnimationFrame(() => document.getElementById(`mun-${codigo}`)?.focus());
   }
@@ -284,9 +294,12 @@ function Mapa() {
     }
   }
 
-  function abrirFicha(codigo: string) {
+  // 1º clique SELECIONA (abre o painel de detalhe); clicar de novo no
+  // mesmo município abre a ficha — evita navegação acidental após um pan.
+  function aoClicarMunicipio(codigo: string) {
     if (arrasto.current?.moveu) return; // arrasto não é clique
-    router.push(`/municipio/${codigo}`);
+    if (selecionado === codigo) router.push(`/municipio/${codigo}`);
+    else setSelecionado(codigo);
   }
 
   function aoTeclarNoMapa(e: React.KeyboardEvent) {
@@ -395,6 +408,8 @@ function Mapa() {
           >
             {features.map((f) => {
               const linha = porCodigo.get(f.codarea);
+              const foraDoFiltro =
+                classeAtiva !== null && (!linha || classeDe(linha.valor) !== classeAtiva);
               return (
                 <path
                   key={f.codarea}
@@ -402,19 +417,23 @@ function Mapa() {
                   d={caminhoDe(f, proj.x, proj.y)}
                   fillRule="evenodd"
                   fill={linha ? corDe(linha.valor) : COR_SEM_DADO}
-                  stroke="var(--surface, #fff)"
-                  strokeWidth={0.7 * (vistaAtual.w / VB_L)}
-                  style={{ cursor: 'pointer', transition: 'opacity var(--motion-micro, .12s)' }}
-                  opacity={pairar && pairar.codigo !== f.codarea ? 0.75 : 1}
+                  stroke={f.codarea === selecionado ? 'var(--navy-950)' : 'var(--surface, #fff)'}
+                  strokeWidth={(f.codarea === selecionado ? 1.8 : 0.7) * (vistaAtual.w / VB_L)}
+                  style={{ cursor: 'pointer', transition: 'opacity var(--motion-standard, .2s), fill var(--motion-standard, .2s)' }}
+                  opacity={foraDoFiltro ? 0.16 : pairar && pairar.codigo !== f.codarea ? 0.75 : 1}
                   // Roving tabindex: só o município ativo entra na ordem de Tab
                   // — antes eram 142 paradas sem escape.
                   tabIndex={f.codarea === focoAtual ? 0 : -1}
-                  aria-label={`${nomes.get(f.codarea) ?? f.codarea}: ${linha ? `${fmt.format(linha.valor)} ${dados?.unidade ?? ''}` : 'sem dado'}`}
+                  aria-label={`${nomes.get(f.codarea) ?? f.codarea}: ${linha ? `${fmt.format(linha.valor)} ${dados?.unidade ?? ''}` : 'sem dado'}. Enter seleciona; Enter de novo abre a ficha.`}
                   onFocus={() => setFocoCodigo(f.codarea)}
                   onMouseMove={(e) => aoMover(e, f.codarea)}
                   onMouseLeave={() => setPairar(null)}
-                  onClick={() => abrirFicha(f.codarea)}
-                  onKeyDown={(e) => e.key === 'Enter' && router.push(`/municipio/${f.codarea}`)}
+                  onClick={() => aoClicarMunicipio(f.codarea)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    if (selecionado === f.codarea) router.push(`/municipio/${f.codarea}`);
+                    else setSelecionado(f.codarea);
+                  }}
                 />
               );
             })}
@@ -453,9 +472,40 @@ function Mapa() {
           </div>
         )}
 
-        {/* Legenda de classes */}
+        {/* Painel do município selecionado */}
+        {selecionado && (
+          <div className="mapa-selecao" role="region" aria-label={`Detalhe de ${nomes.get(selecionado) ?? selecionado}`}>
+            <div className="mapa-selecao-topo">
+              <strong>{nomes.get(selecionado) ?? selecionado}</strong>
+              <button type="button" className="mapa-selecao-fechar" aria-label="Limpar seleção" onClick={() => setSelecionado(null)}>✕</button>
+            </div>
+            {(() => {
+              const linha = porCodigo.get(selecionado);
+              if (!linha) {
+                return <p className="label-md" style={{ margin: 0, color: 'var(--on-surface-variant)' }}>Sem dado deste indicador para o município — ausência é resposta, não zero.</p>;
+              }
+              const posicao = rankingDesc.findIndex((m) => m.codigo_ibge === selecionado) + 1;
+              return (
+                <>
+                  <div className="mapa-selecao-valor mono">
+                    {fmt.format(linha.valor)} <span className="label-md">{dados?.unidade}</span>
+                  </div>
+                  <p className="label-md" style={{ margin: '2px 0 0', color: 'var(--on-surface-variant)' }}>
+                    {posicao}º de {rankingDesc.length} municípios com dado · {linha.fonte} · ref. {linha.data_referencia.slice(0, 4)}
+                  </p>
+                </>
+              );
+            })()}
+            <div className="mapa-selecao-acoes">
+              <button type="button" className="btn primaria" onClick={() => router.push(`/municipio/${selecionado}`)}>Abrir ficha</button>
+              <button type="button" className="btn" onClick={() => router.push(`/consulta?municipio=${selecionado}`)}>Ver na consulta</button>
+            </div>
+          </div>
+        )}
+
+        {/* Legenda de classes — clicável: destaca a faixa no mapa */}
         {limites.length > 0 && dados && (
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginTop: 14 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 14 }}>
             <span className="overline">{dados.indicador} ({dados.unidade})</span>
             {RAMPA.map((cor, i) => {
               const de = i === 0 ? null : limites[i - 1];
@@ -465,16 +515,28 @@ function Mapa() {
                 ate === null ? `≥ ${fmt.format(de)}` :
                 `${fmt.format(de)}–${fmt.format(ate)}`;
               return (
-                <span key={cor} className="label-md" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  key={cor}
+                  type="button"
+                  className={`mapa-legenda-classe${classeAtiva === i ? ' ativa' : ''}`}
+                  aria-pressed={classeAtiva === i}
+                  title={classeAtiva === i ? 'Mostrar todas as faixas' : 'Destacar só esta faixa no mapa'}
+                  onClick={() => setClasseAtiva((a) => (a === i ? null : i))}
+                >
                   <span style={{ width: 14, height: 14, background: cor, borderRadius: 3, display: 'inline-block' }} aria-hidden />
                   {rotulo}
-                </span>
+                </button>
               );
             })}
             <span className="label-md" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 14, height: 14, background: COR_SEM_DADO, border: '1px solid var(--border)', borderRadius: 3, display: 'inline-block' }} aria-hidden />
               sem dado
             </span>
+            {classeAtiva !== null && (
+              <button type="button" className="btn" style={{ minHeight: 28, padding: '2px 10px', fontSize: 12 }} onClick={() => setClasseAtiva(null)}>
+                Mostrar todas
+              </button>
+            )}
           </div>
         )}
       </div>

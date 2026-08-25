@@ -748,3 +748,16 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .home-minima { min-height:calc(100vh - 160px); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:var(--space-5); max-width:760px; margin:0 auto; padding-bottom:8vh; }
 .home-minima-logo { display:block; width:min(280px, 62vw); height:auto; margin:0 auto; }
 .home-minima .pesquisa-principal { margin-top:0; }
+
+/* Painel de seleção do mapa + legenda-filtro (interatividade) */
+.mapa-selecao { position:absolute; left:12px; bottom:12px; z-index:6; width:min(300px, calc(100% - 24px)); display:grid; gap:6px; padding:12px 14px; background:var(--surface-container-lowest); border:1px solid var(--border); border-left:3px solid var(--primary); border-radius:var(--radius-md); box-shadow:var(--sombra-2); }
+.mapa-selecao-topo { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.mapa-selecao-fechar { min-width:28px; min-height:28px; border:0; border-radius:var(--radius-sm); background:transparent; color:var(--outline); cursor:pointer; }
+.mapa-selecao-fechar:hover { color:var(--error); background:var(--surface-container-low); }
+.mapa-selecao-valor { font-size:22px; font-weight:700; }
+.mapa-selecao-acoes { display:flex; gap:8px; margin-top:4px; flex-wrap:wrap; }
+.mapa-selecao-acoes .btn { min-height:32px; padding:4px 12px; font-size:13px; }
+.mapa-legenda-classe { display:inline-flex; align-items:center; gap:6px; min-height:26px; padding:3px 8px; border:1px solid transparent; border-radius:var(--radius-full); background:transparent; color:var(--on-surface-variant); font:inherit; font-size:12px; line-height:16px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; cursor:pointer; transition:background var(--motion-micro) var(--ease), border-color var(--motion-micro) var(--ease); }
+.mapa-legenda-classe:hover { background:var(--surface-container-low); }
+.mapa-legenda-classe.ativa { border-color:var(--primary); background:var(--surface-container-low); color:var(--on-surface); }
+@media (max-width: 560px) { .mapa-selecao { position:static; width:100%; margin-top:10px; } }
