@@ -473,7 +473,8 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .biblioteca-selo small { color:rgba(255,255,255,.62); line-height:18px; }
 .biblioteca-busca { box-sizing:border-box; margin-top:-58px; position:relative; z-index:2; width:calc(100% - 64px); min-width:0; align-self:center; padding:20px; background:var(--surface-container-lowest); border:1px solid var(--border); border-radius:12px; box-shadow:var(--e2); }
 .biblioteca-busca label { display:block; margin-bottom:8px; color:var(--on-surface-variant); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
-.biblioteca-busca-linha { display:flex; min-width:0; gap:10px; }
+.biblioteca-busca-linha { display:flex; flex-wrap:wrap; min-width:0; gap:10px; }
+.biblioteca-busca-linha .btn { flex:none; }
 .biblioteca-busca-linha > * { min-width:0; }
 .biblioteca .campo, .curadoria-docs .campo { box-sizing:border-box; max-width:100%; }
 .biblioteca-tipo { max-width:210px; }
@@ -706,7 +707,7 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .grafico-legenda { display:flex; flex-wrap:wrap; gap:6px 16px; margin-top:6px; font-size:12px; color:var(--on-surface-variant); }
 
 .grafico-barras { display:grid; gap:6px; margin-top:10px; }
-.grafico-barras-linha { display:grid; grid-template-columns:minmax(90px, 160px) 1fr; align-items:center; gap:8px; font-size:12px; }
+.grafico-barras-linha { display:grid; grid-template-columns:minmax(90px, 160px) minmax(0, 1fr); align-items:center; gap:8px; font-size:12px; }
 .grafico-barras-rotulo { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--on-surface-variant); }
 /* O valor reserva a própria coluna: a barra (largura %) vive na coluna
    flexível e nunca empurra o texto para fora do card. */

@@ -340,7 +340,7 @@ function Mapa() {
           Indicador
           <select
             className="campo"
-            style={{ minWidth: 260 }}
+            style={{ minWidth: 'min(260px, 60vw)' }}
             value={indicadorId ?? ''}
             onChange={(e) => setIndicadorId(Number(e.target.value))}
             aria-label="Escolher indicador"
