@@ -3,9 +3,8 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { REGIAO } from '@/lib/regiao';
-import { ModoPesquisa, SeletorModoPesquisa } from '@/components/SeletorModoPesquisa';
+import type { ModoPesquisa } from '@/components/SeletorModoPesquisa';
 import { ReguaProcedencia } from '@/components/ReguaProcedencia';
-import { CabecalhoPagina } from '@/components/CabecalhoPagina';
 import { TermoExplicado } from '@/components/TermoExplicado';
 import {
   ativarConversa, conversaAtiva, excluirConversa, listarConversas,
@@ -223,18 +222,9 @@ function XinguConteudo() {
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      <section className="modo-pesquisa-contextual" aria-label="Modo da pesquisa atual">
-        <div>
-          <div className="overline">Experiência de consulta</div>
-          <p>Use linguagem natural sem perder o acesso à pesquisa estruturada.</p>
-        </div>
-        <SeletorModoPesquisa ativo="xingu" onChange={mudarModo} compacto />
-      </section>
-      <CabecalhoPagina
-        overline="IA Xingú"
-        titulo={`Pergunte aos dados de ${REGIAO.nome}`}
-        descricao="A Xingú traduz a sua pergunta em um plano de consulta — exibido antes da resposta — e executa no motor determinístico. Nenhum número vem do modelo de linguagem: cada valor é auditado contra o resultado da consulta antes de aparecer aqui."
-      />
+      {/* WCAG 1.3.1/2.4.6: a página mantém raiz de outline mesmo sem
+          cabeçalho visível (mesmo padrão da consulta, EV-051). */}
+      <h1 className="sr-only">IA Xingú — pergunte aos dados de {REGIAO.nome}</h1>
 
       {situacao && situacao.llm !== 'ATIVO' && (
         <div className="aviso" role="status" style={{ marginTop: 8 }}>
