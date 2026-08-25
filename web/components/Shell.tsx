@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 /** Ícones dos seis caminhos principais — traço institucional, herdam currentColor. */
 const I = {
@@ -13,6 +13,7 @@ const I = {
   territorio: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m9 4-5 2v14l5-2 6 2 5-2V4l-5 2-6-2Z" /><path d="M9 4v14M15 6v14" /></svg>,
   cidadania: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16M5 7h14M5 7 3 12a3.2 3.2 0 0 0 6.4 0L7 7M17 7l-2.4 5a3.2 3.2 0 0 0 6.4 0L19 7M8.5 20h7" /></svg>,
   mais: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="5" cy="12" r="1.25" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.25" fill="currentColor" stroke="none" /></svg>,
+  operacao: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1" /></svg>,
 };
 
 type ItemNavegacao = { href: string; rotulo: string };
@@ -24,6 +25,10 @@ type SecaoNavegacao = {
   itens?: ItemNavegacao[];
 };
 
+// Onda D: o menu separa o PORTAL público da área de OPERAÇÃO (restrita
+// por token). As rotas antes órfãs — /fontes, /biblioteca/curadoria e
+// /direitos/descubra — ganharam entrada, e "Fichas municipais" aponta
+// para o índice /municipio (antes era um município hardcoded).
 const NAV: SecaoNavegacao[] = [
   { id: 'inicio', rotulo: 'Início', icone: 'inicio', href: '/' },
   {
@@ -31,7 +36,7 @@ const NAV: SecaoNavegacao[] = [
     itens: [
       { href: '/consulta', rotulo: 'Indicadores' },
       { href: '/mapa', rotulo: 'Mapa territorial' },
-      { href: '/municipio/5103403', rotulo: 'Fichas municipais' },
+      { href: '/municipio', rotulo: 'Fichas municipais' },
       { href: '/painel', rotulo: 'Painel de síntese' },
     ],
   },
@@ -47,13 +52,13 @@ const NAV: SecaoNavegacao[] = [
     itens: [
       { href: '/geoportal', rotulo: 'Geoportal' },
       { href: '/acervo', rotulo: 'Acervo territorial' },
-      { href: '/campo', rotulo: 'Operação de campo' },
     ],
   },
   {
     id: 'cidadania', rotulo: 'Cidadania', icone: 'cidadania',
     itens: [
       { href: '/direitos', rotulo: 'Mapa de Direitos' },
+      { href: '/direitos/descubra', rotulo: 'Descubra os seus direitos' },
       { href: '/participacao', rotulo: 'Participação social' },
       { href: '/biblioteca', rotulo: 'Biblioteca' },
     ],
@@ -64,14 +69,27 @@ const NAV: SecaoNavegacao[] = [
       { href: '/ciencia', rotulo: 'Ciência aberta' },
       { href: '/transparencia', rotulo: 'Transparência' },
       { href: '/cobertura', rotulo: 'Cobertura de dados' },
-      { href: '/integracoes', rotulo: 'Integrações' },
+    ],
+  },
+  {
+    id: 'operacao', rotulo: 'Operação', icone: 'operacao',
+    itens: [
+      { href: '/campo', rotulo: 'Operação de campo' },
+      { href: '/fontes', rotulo: 'Agentes de fonte' },
+      { href: '/biblioteca/curadoria', rotulo: 'Curadoria documental' },
+      { href: '/integracoes', rotulo: 'Integrações e API' },
       { href: '/organizacoes', rotulo: 'Organizações' },
     ],
   },
 ];
 
+const TODOS_HREFS = NAV.flatMap((s) => (s.href ? [s.href] : (s.itens ?? []).map((i) => i.href)));
+
 function rotaAtiva(pathname: string, href: string) {
-  return href === '/' ? pathname === '/' : pathname.startsWith(href.split('/').slice(0, 2).join('/'));
+  const casa = (h: string) => (h === '/' ? pathname === '/' : pathname === h || pathname.startsWith(`${h}/`));
+  if (!casa(href)) return false;
+  // O href mais específico vence: /biblioteca/curadoria não acende /biblioteca.
+  return !TODOS_HREFS.some((h) => h !== href && h.length > href.length && casa(h));
 }
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -151,7 +169,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
             const expandida = secoesAbertas.includes(secao.id);
             return (
-              <div className="sidebar-secao" key={secao.id} data-ativa={secaoAtiva ? '1' : '0'}>
+              <Fragment key={secao.id}>
+              {secao.id === 'operacao' && (
+                <div className="nav-contexto" style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.14)' }}>
+                  Acesso restrito
+                </div>
+              )}
+              <div className="sidebar-secao" data-ativa={secaoAtiva ? '1' : '0'}>
                 <button
                   type="button"
                   className="sidebar-item sidebar-raiz sidebar-disclosure"
@@ -183,6 +207,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   </div>
                 )}
               </div>
+              </Fragment>
             );
           })}
         </nav>

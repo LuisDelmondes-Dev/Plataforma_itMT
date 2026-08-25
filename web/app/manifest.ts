@@ -16,12 +16,10 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: 'any',
     categories: ['government', 'productivity', 'utilities'],
     icons: [
-      {
-        src: '/itmt-icone.png',
-        sizes: 'any',
-        type: 'image/png',
-        purpose: 'any',
-      },
+      { src: '/itmt-icone-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/itmt-icone-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      // Maskable: arte com zona de segurança sobre o navy institucional.
+      { src: '/itmt-icone-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   };
 }

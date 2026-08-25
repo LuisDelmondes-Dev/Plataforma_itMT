@@ -11,7 +11,14 @@ interface FeatureMun { codarea: string; aneis: Anel[] }
  * destacado — mesma malha soberana do /mapa, estático e decorativo
  * (aria-hidden; a localização textual está na própria ficha).
  */
-export function MiniMapaMunicipio({ codigo }: { codigo: string }) {
+export function MiniMapaMunicipio({
+  codigo,
+  aparencia = 'padrao',
+}: {
+  codigo: string;
+  /** 'hero' = silhueta decorativa clara para fundos navy (sem link). */
+  aparencia?: 'padrao' | 'hero';
+}) {
   const [features, setFeatures] = useState<FeatureMun[]>([]);
 
   useEffect(() => {
@@ -52,6 +59,7 @@ export function MiniMapaMunicipio({ codigo }: { codigo: string }) {
 
   if (!desenho) return null;
 
+  const hero = aparencia === 'hero';
   return (
     <div className="mini-mapa">
       <svg viewBox={`0 0 ${desenho.W} ${desenho.H.toFixed(0)}`} width="100%" aria-hidden="true" style={{ display: 'block' }}>
@@ -60,15 +68,23 @@ export function MiniMapaMunicipio({ codigo }: { codigo: string }) {
             key={f.codarea}
             d={desenho.caminho(f)}
             fillRule="evenodd"
-            fill={f.codarea === codigo ? 'var(--dado-observado)' : 'var(--surface-container-high)'}
-            stroke="var(--surface-container-lowest)"
+            fill={
+              hero
+                ? 'rgba(255,255,255,.13)'
+                : f.codarea === codigo
+                  ? 'var(--dado-observado)'
+                  : 'var(--surface-container-high)'
+            }
+            stroke={hero ? 'rgba(255,255,255,.30)' : 'var(--surface-container-lowest)'}
             strokeWidth={0.4}
           />
         ))}
       </svg>
-      <Link className="label-md" href={`/mapa`}>
-        Ver no mapa de indicadores →
-      </Link>
+      {!hero && (
+        <Link className="label-md" href={`/mapa`}>
+          Ver no mapa de indicadores →
+        </Link>
+      )}
     </div>
   );
 }
