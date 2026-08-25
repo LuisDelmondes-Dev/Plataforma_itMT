@@ -10,6 +10,12 @@
 // v4: purga o CSS/JS de dev preso em navegadores (layout sem padding);
 // o SW agora só opera em produção. Política de allowlist de EV-049 intacta.
 const CACHE = 'itmt-shell-v4';
+
+// Em DEV (localhost) o SW se AUTODESTRÓI: os chunks do next dev têm nomes
+// estáveis e o cache-first servia CSS/JS velhos com HTML novo. Ao atualizar
+// para esta versão, ele purga todos os caches, desregistra a si mesmo e
+// recarrega as abas abertas — o navegador volta a falar direto com o next.
+const DEV = ['localhost', '127.0.0.1'].includes(self.location.hostname);
 const APP_SHELL = ['/', '/campo', '/itmt-icone.png', '/itmt-horizontal.png'];
 
 /** Navegações públicas que podem ficar offline. Prefixo exato ou início de rota. */
@@ -29,11 +35,21 @@ function podeCachearNavegacao(pathname) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)));
+  if (!DEV) event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  if (DEV) {
+    event.waitUntil(
+      caches.keys()
+        .then((chaves) => Promise.all(chaves.map((chave) => caches.delete(chave))))
+        .then(() => self.registration.unregister())
+        .then(() => self.clients.matchAll({ type: 'window' }))
+        .then((clientes) => Promise.all(clientes.map((c) => c.navigate(c.url).catch(() => {})))),
+    );
+    return;
+  }
   event.waitUntil(
     caches.keys()
       .then((chaves) => Promise.all(chaves.filter((chave) => chave !== CACHE).map((chave) => caches.delete(chave))))
@@ -42,6 +58,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (DEV) return; // dev nunca intercepta: sem cache, sem chunk velho
   const requisicao = event.request;
   if (requisicao.method !== 'GET') return;
 
