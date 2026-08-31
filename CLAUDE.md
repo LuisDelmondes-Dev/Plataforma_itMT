@@ -9,7 +9,7 @@ programa público estruturado em fases **F0–F7**, não um app CRUD. Quatro par
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16+ / pgvector | 68 migrações SQL escritas à mão, **sem ORM** |
+| `db/` | PostgreSQL 16+ / pgvector | 69 migrações SQL escritas à mão, **sem ORM** |
 | `api/` | NestJS 11 + driver `pg` cru | o **motor determinístico** |
 | `web/` | Next.js 16 / React 19 (App Router) | portal público, 23 páginas |
 | `coletores/` | Python | raspagem de fontes sem API (CNES/TabNet, INEP) |
@@ -63,7 +63,7 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
   nunca crie tabela sem quem a consuma (E7–E14/E16 estão na fila do ADR justamente
   por isso). **DIRETRIZ NOVA (31/08/2026, decisão do usuário — supera a regra
   de laboratório):** o modelo externo COMPLETO passa a viver no próprio banco
-  `itmt` (db/68: 1.299 tabelas em 20 schemas, entre eles `dw`), e daqui em
+  `itmt` (db/68 + db/69: 1.318 tabelas em 20 schemas, entre eles `dw`), e daqui em
   diante toda tabela e todo DW nascem ali. Consequências que valem saber: os
   dois modelos convivem sem colisão (a casa em `public` PascalCase, o externo
   em schemas próprios snake_case); **as 132 tabelas de fato estão VAZIAS** —
