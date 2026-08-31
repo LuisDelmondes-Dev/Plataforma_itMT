@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "SINASC/DATASUS — Nascidos vivos (TabNet, nvmt)",
+    "origem": "Ministério da Saúde — SVSA/CGIAE — Sistema de Informações sobre Nascidos Vivos (SINASC)",
+    "url": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinasc/cnv/nvmt.def",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Informações de Saúde — DATASUS (Lei 12.527/2011)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": { "nome": "Nascidos vivos", "unidade": "nascidos vivos", "tipoAgregacao": "SOMA", "subtemaNome": "Mortalidade infantil" },
+  "colunas": { "codigoIbge": "codigo_ibge", "valor": "valor" },
+  "dataReferencia": "2024-12-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -7,7 +8,7 @@ import { DatabaseService } from '../database/database.service';
 import { TerritorioService, Recorte } from '../territorio/territorio.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AgentesFonteService } from '../fontes/agentes-fonte.service';
-import { Procedencia, ValorComProcedencia } from '../common/procedencia';
+import { Procedencia, StatusDado, ValorComProcedencia } from '../common/procedencia';
 
 interface LinhaObs {
   codigo_ibge: string;
@@ -18,6 +19,21 @@ interface LinhaObs {
   licenca: string;
   data_extracao: string;
   hash: string;
+  /** E3 (db/60): fase de homologação na fonte; NULL = desconhecido (campo omitido na saída). */
+  status_dado: StatusDado | null;
+}
+
+/**
+ * E3 (ADR-010): status agregado de um conjunto de parcelas — o PIOR vence
+ * (PRELIMINAR contamina REVISADO/CONSOLIDADO); qualquer parcela de status
+ * DESCONHECIDO (NULL) impede afirmar CONSOLIDADO/REVISADO ⇒ undefined
+ * (campo omitido — não se afirma o que não se sabe, irmã da RN-005).
+ */
+function piorStatus(statuses: (StatusDado | null | undefined)[]): StatusDado | undefined {
+  if (statuses.some((s) => s === 'PRELIMINAR')) return 'PRELIMINAR';
+  if (statuses.some((s) => s === null || s === undefined)) return undefined;
+  if (statuses.some((s) => s === 'CONSOLIDADO')) return 'CONSOLIDADO';
+  return statuses.length ? 'REVISADO' : undefined;
 }
 
 interface MetaIndicador {
@@ -27,6 +43,98 @@ interface MetaIndicador {
   tipo_agregacao: 'SOMA' | 'MEDIA_PONDERADA' | 'RECALCULO' | 'NAO_AGREGAVEL';
   numerador_id: number | null;
   denominador_id: number | null;
+  /**
+   * Escala do RECALCULO (Gauntlet P3): cobertura vacinal é % (×100), taxa de
+   * mortalidade infantil é POR MIL (×1000). Metadado do catálogo
+   * ("Indicador_FatorEscala", db/49) — o DEFAULT 100 preserva o comportamento
+   * de todo indicador anterior.
+   */
+  fator_escala: number;
+}
+
+/** Uma linha do ranking municipal (Gauntlet P2). */
+export interface RankingMunicipio {
+  /** Competition ranking: empate compartilha a posição (1,2,2,4). */
+  posicao: number;
+  codigo_ibge: string;
+  nome: string;
+  valor: number;
+  /** null quando não existe média estadual (NAO_AGREGAVEL, RN-003). */
+  delta_media_estadual: number | null;
+  top_n: boolean;
+  bottom_n: boolean;
+  procedencia: Procedencia[];
+}
+
+/** Uma categoria da decomposição por causa (Gauntlet P3). */
+export interface CausaCategoria {
+  categoria: string;
+  /** Valor ABSOLUTO do motor (ex.: óbitos) — nunca derivado por LLM (RG-03). */
+  valor: number;
+  /** Participação % sobre o total da dimensão no território (1 casa). */
+  participacao: number;
+}
+
+/**
+ * Um eixo de decomposição — ex.: capítulo CID-10, causa evitável, componente
+ * etário. Evolução E1: o vocabulário deixou de ser union type fechado e passou
+ * a ser o catálogo "DimensaoObservacao" (db/54) — o tipo é `string` e a
+ * validação é em RUNTIME contra o catálogo (dimensoesObservacao()), para que
+ * uma 4ª dimensão entre por migração de curadoria sem edição de código.
+ */
+export interface CausaDimensao {
+  dimensao: string;
+  /** Referência vigente DESTA dimensão no território (≤ referência pedida). */
+  referencia: string;
+  total: number;
+  categorias: CausaCategoria[];
+  procedencia: Procedencia[];
+}
+
+/** Linha do catálogo de dimensões de observação (db/54 — Evolução E1). */
+export interface DimensaoObservacaoCatalogo {
+  codigo: string;
+  /** Rótulo de exibição pt-BR (ex.: 'capítulo CID-10') — o que o A16 escreve. */
+  nome: string;
+  /** Ordem canônica de exibição/desempate. */
+  ordem: number;
+}
+
+/** Decomposição por causa de um indicador num território (Gauntlet P3 · MOTOR-CAUSAS). */
+export interface Causas {
+  indicador: string;
+  unidade: string;
+  recorte: 'MUNICIPIO' | 'ESTADO';
+  local: string;
+  referencia: string;
+  /**
+   * Quando o indicador consultado é uma taxa (RECALCULO) sem decomposição
+   * própria, a decomposição vem do NUMERADOR (ex.: causas da taxa de
+   * mortalidade infantil = causas dos óbitos infantis) — declarado aqui.
+   */
+  decomposicao_de?: string;
+  dimensoes: CausaDimensao[];
+}
+
+/** Ranking completo dos municípios do estado por um indicador (Gauntlet P2). */
+export interface Ranking {
+  indicador: string;
+  unidade: string;
+  referencia: string;
+  agregacao: MetaIndicador['tipo_agregacao'];
+  /**
+   * Total estadual pelo rollup do motor — só existe para SOMA (contagens);
+   * em RECALCULO/MEDIA_PONDERADA o agregado estadual É a média, e em
+   * NAO_AGREGAVEL não há agregado válido (RN-003). Crítico P2/rodada 1:
+   * quem lê um ranking de contagens quer "X de Y do estado".
+   */
+  total_estadual: number | null;
+  media_estadual: number | null;
+  media_estadual_motivo?: string;
+  total_municipios: number;
+  /** RN-005: município sem dado fica FORA do ranking — nunca vira zero. */
+  ausentes: { total: number; codigos: string[] };
+  municipios: RankingMunicipio[];
 }
 
 /**
@@ -44,6 +152,31 @@ export class IndicadoresService {
     private readonly agentes: AgentesFonteService,
   ) {}
 
+  private cacheDimensoes: { quando: number; linhas: DimensaoObservacaoCatalogo[] } | null = null;
+  private static readonly DIMENSOES_TTL_MS = 60_000;
+
+  /**
+   * Catálogo de dimensões de observação (db/54 — Evolução E1), cacheado 60s
+   * no padrão do catálogo de práticas (SugestoesService). A aplicação só lê:
+   * curadoria de vocabulário é migração. É a ÚNICA fonte da allowlist do
+   * parâmetro ?dimensao — o antigo union type/lista fixa no código morreu.
+   */
+  async dimensoesObservacao(): Promise<DimensaoObservacaoCatalogo[]> {
+    if (this.cacheDimensoes && Date.now() - this.cacheDimensoes.quando < IndicadoresService.DIMENSOES_TTL_MS) {
+      return this.cacheDimensoes.linhas;
+    }
+    const r = await this.db.query<DimensaoObservacaoCatalogo>(
+      `SELECT "DimensaoObservacao_Codigo" AS codigo,
+              "DimensaoObservacao_Nome"   AS nome,
+              "DimensaoObservacao_Ordem"::int AS ordem
+         FROM "DimensaoObservacao"
+        WHERE "DimensaoObservacao_Ativa"
+        ORDER BY "DimensaoObservacao_Ordem", "DimensaoObservacao_Codigo"`,
+    );
+    this.cacheDimensoes = { quando: Date.now(), linhas: r.rows };
+    return r.rows;
+  }
+
   private async meta(indicadorId: number): Promise<MetaIndicador> {
     // RG-09 vale também no acesso direto por id: indicador sem parecer
     // favorável não existe para o público — não só para a navegação.
@@ -52,7 +185,8 @@ export class IndicadoresService {
     const r = await this.db.query<MetaIndicador>(
       `SELECT "Indicador_Id" AS id, "Indicador_Nome" AS nome, "Indicador_Unidade" AS unidade,
               "Indicador_TipoAgregacao" AS tipo_agregacao,
-              "Indicador_NumeradorId" AS numerador_id, "Indicador_DenominadorId" AS denominador_id
+              "Indicador_NumeradorId" AS numerador_id, "Indicador_DenominadorId" AS denominador_id,
+              "Indicador_FatorEscala"::float8 AS fator_escala
          FROM "Indicador" WHERE "Indicador_Id" = $1 AND "Indicador_StatusValidacao" = 'APROVADO'`,
       [indicadorId],
     );
@@ -86,7 +220,8 @@ export class IndicadoresService {
               f."Fonte_Url"                 AS url,
               f."Fonte_Licenca"             AS licenca,
               c."Carga_DataExtracao"::text  AS data_extracao,
-              c."Carga_HashSha256"          AS hash
+              c."Carga_HashSha256"          AS hash,
+              o."Observacao_StatusDado"     AS status_dado
          FROM "Observacao" o
          JOIN "Fonte" f ON f."Fonte_Id" = o."Observacao_FonteId"
          JOIN "Carga" c ON c."Carga_Id" = o."Observacao_CargaId"
@@ -101,9 +236,12 @@ export class IndicadoresService {
 
   private procedenciaDe(linhas: LinhaObs[]): Procedencia[] {
     const vistos = new Map<string, Procedencia>();
+    // E3: linhas que colapsam na mesma citação (fonte|referência|hash) podem
+    // divergir de status — a citação reporta o pior (piorStatus).
+    const statusPorChave = new Map<string, (StatusDado | null)[]>();
     for (const l of linhas) {
       const chave = `${l.fonte}|${l.data_referencia}|${l.hash}`;
-      if (!vistos.has(chave))
+      if (!vistos.has(chave)) {
         vistos.set(chave, {
           fonte: l.fonte,
           url: l.url,
@@ -112,6 +250,13 @@ export class IndicadoresService {
           licenca: l.licenca,
           hash: l.hash,
         });
+        statusPorChave.set(chave, []);
+      }
+      statusPorChave.get(chave)!.push(l.status_dado);
+    }
+    for (const [chave, p] of vistos) {
+      const status = piorStatus(statusPorChave.get(chave)!);
+      if (status !== undefined) p.status_dado = status;
     }
     return [...vistos.values()];
   }
@@ -178,8 +323,44 @@ export class IndicadoresService {
 
     if (!ehAgregado || meta.tipo_agregacao === 'SOMA') {
       linhas = await this.observacoes(indicadorId, codigos, dataReferencia);
-      if (!linhas.length) return this.ausencia(meta, rotulo, recorte, indicadorId, dataReferencia);
-      valor = linhas.reduce((s, l) => s + Number(l.valor), 0);
+      if (linhas.length) {
+        valor = linhas.reduce((s, l) => s + Number(l.valor), 0);
+      } else if (
+        !ehAgregado &&
+        meta.tipo_agregacao === 'RECALCULO' &&
+        meta.numerador_id &&
+        meta.denominador_id
+      ) {
+        // Gauntlet P3: uma taxa (RECALCULO) normalmente NÃO é materializada
+        // por município — sem observação própria, recomputa num/den do
+        // PRÓPRIO município (mesma matemática do ranking, RN-003). Só entra
+        // com AMBAS as parcelas e denominador ≠ 0 — sem imputação (RN-005).
+        const [num, den] = await Promise.all([
+          this.observacoes(meta.numerador_id, codigos, dataReferencia),
+          this.observacoes(meta.denominador_id, codigos, dataReferencia),
+        ]);
+        if (!num.length || !den.length)
+          return this.ausencia(meta, rotulo, recorte, indicadorId, dataReferencia);
+        // Guarda de MESMA REFERÊNCIA (rodada 2 do gauntlet P3): numerador e
+        // denominador de taxa são dados de EVENTO (contagens anuais), não de
+        // estoque — a vigência "≤ referência" de cada parcela pode apontar
+        // para ANOS diferentes, e dividir óbitos de um ano por nascidos de
+        // outro fabrica uma taxa que nunca existiu (imputação silenciosa do
+        // passado, RN-005). Divergiu ⇒ sem cálculo, com contexto honesto.
+        if (num[0].data_referencia !== den[0].data_referencia)
+          throw new NotFoundException(
+            await this.mensagemParcelasDivergentes(meta, rotulo, dataReferencia, num[0], den[0]),
+          );
+        if (Number(den[0].valor) === 0)
+          throw new NotFoundException(
+            `Não há taxa calculável de "${meta.nome}" para ${rotulo} em ${num[0].data_referencia}: ` +
+              `o denominador vale 0 nessa referência — divisão impossível, sem imputação (RN-005).`,
+          );
+        valor = (Number(num[0].valor) / Number(den[0].valor)) * meta.fator_escala;
+        linhas = [...num, ...den];
+      } else {
+        return this.ausencia(meta, rotulo, recorte, indicadorId, dataReferencia);
+      }
     } else if (meta.tipo_agregacao === 'RECALCULO') {
       // Taxas NÃO somam: recomputar a partir de numerador e denominador (RN-003)
       if (!meta.numerador_id || !meta.denominador_id) {
@@ -191,16 +372,28 @@ export class IndicadoresService {
         this.observacoes(meta.numerador_id, codigos, dataReferencia),
         this.observacoes(meta.denominador_id, codigos, dataReferencia),
       ]);
-      // Só entram municípios com AMBAS as parcelas — sem imputação (RF-CHAT-006: nunca estimar)
-      const comDen = new Set(den.map((d) => d.codigo_ibge));
-      const numOk = num.filter((n) => comDen.has(n.codigo_ibge));
-      const denOk = den.filter((d) => numOk.some((n) => n.codigo_ibge === d.codigo_ibge));
+      // Só entram municípios com AMBAS as parcelas — sem imputação (RF-CHAT-006: nunca estimar).
+      // E com AMBAS na MESMA referência (rodada 2 do gauntlet P3): parcelas de
+      // taxa são dados de EVENTO (contagens anuais), não de estoque — a
+      // vigência "≤ referência" pode trazer o numerador de um ano e o
+      // denominador de outro, e somar essas parcelas descasadas no agregado
+      // contamina a taxa estadual com o passado (imputação silenciosa,
+      // RN-005). Município com referências divergentes fica FORA da soma.
+      const denPor = new Map(den.map((d) => [d.codigo_ibge, d]));
+      const numOk: LinhaObs[] = [];
+      const denOk: LinhaObs[] = [];
+      for (const nu of num) {
+        const de = denPor.get(nu.codigo_ibge);
+        if (!de || nu.data_referencia !== de.data_referencia) continue;
+        numOk.push(nu);
+        denOk.push(de);
+      }
       if (!numOk.length) return this.ausencia(meta, rotulo, recorte, indicadorId, dataReferencia);
       const somaNum = numOk.reduce((s, l) => s + Number(l.valor), 0);
       const somaDen = denOk.reduce((s, l) => s + Number(l.valor), 0);
       if (somaDen === 0)
         throw new UnprocessableEntityException(`Denominador zero no recálculo de "${meta.nome}".`);
-      valor = (somaNum / somaDen) * 100;
+      valor = (somaNum / somaDen) * meta.fator_escala;
       linhas = [...numOk, ...denOk];
     } else {
       // MEDIA_PONDERADA — peso é a população estimada, resolvida pelo NOME
@@ -231,6 +424,10 @@ export class IndicadoresService {
       linhas = vals;
     }
 
+    // E3: status agregado das parcelas — o pior vence (PRELIMINAR contamina);
+    // parcela desconhecida ⇒ campo omitido (não se afirma o que não se sabe).
+    const statusDado = piorStatus(linhas.map((l) => l.status_dado));
+
     const resposta: ValorComProcedencia = {
       valor: Number(valor.toFixed(meta.tipo_agregacao === 'RECALCULO' ? 1 : 2)),
       unidade: meta.unidade,
@@ -239,6 +436,7 @@ export class IndicadoresService {
       local: rotulo,
       agregacao: ehAgregado ? meta.tipo_agregacao : 'VALOR_MUNICIPAL',
       municipios_agregados: ehAgregado ? new Set(linhas.map((l) => l.codigo_ibge)).size : undefined,
+      ...(statusDado !== undefined ? { status_dado: statusDado } : {}),
       procedencia: this.procedenciaDe(linhas), // §12.1: indissociável do número
     };
 
@@ -251,6 +449,35 @@ export class IndicadoresService {
     });
 
     return resposta;
+  }
+
+  /**
+   * Mensagem da guarda de mesma referência (rodada 2 do gauntlet P3): as duas
+   * parcelas vigentes existem, mas em ANOS diferentes — para dado de EVENTO
+   * isso não forma taxa. A resposta é honesta e SEM número calculado.
+   */
+  private async mensagemParcelasDivergentes(
+    meta: MetaIndicador,
+    rotulo: string,
+    dataReferencia: string,
+    num: LinhaObs,
+    den: LinhaObs,
+  ): Promise<string> {
+    // Nomes das parcelas só para a mensagem (sem filtro de status: o público
+    // não calcula nada aqui — só entende o porquê da ausência).
+    const nomes = await this.db.query<{ id: number; nome: string }>(
+      `SELECT "Indicador_Id" AS id, "Indicador_Nome" AS nome
+         FROM "Indicador" WHERE "Indicador_Id" = ANY($1)`,
+      [[meta.numerador_id, meta.denominador_id]],
+    );
+    const nomePor = new Map(nomes.rows.map((n) => [Number(n.id), n.nome]));
+    const nomeNum = nomePor.get(meta.numerador_id!) ?? 'numerador';
+    const nomeDen = nomePor.get(meta.denominador_id!) ?? 'denominador';
+    return (
+      `Não há taxa calculável de "${meta.nome}" para ${rotulo} até ${dataReferencia}: ` +
+      `parcelas com referências divergentes — ${nomeNum} ${num.data_referencia.slice(0, 4)} ` +
+      `vs ${nomeDen} ${den.data_referencia.slice(0, 4)} — sem cálculo, sem imputação (RN-005).`
+    );
   }
 
   /** RN-005: a ausência de dado é uma resposta legítima — nunca estimar. */
@@ -340,9 +567,12 @@ export class IndicadoresService {
   }
 
   /**
-   * Indicadores em destaque para a ficha municipal (RF-PORTAL-011): os
-   * publicados que efetivamente têm observação, do catálogo — não uma lista
-   * fixa de ids. Ordena por tema/ordem para uma síntese coerente.
+   * Indicadores em destaque para a ficha municipal (RF-PORTAL-011) e para a
+   * lista do mapa: os publicados que efetivamente têm dado consultável, do
+   * catálogo — não uma lista fixa de ids. Um RECALCULO (taxa) não tem
+   * observação própria: ele TEM dado quando numerador E denominador têm
+   * (P6 rodada 2 — a taxa aprovada não aparecia na lista de /mapa).
+   * Ordena por tema/ordem para uma síntese coerente.
    */
   async destaque(limite = 4, detalhe = false) {
     const r = await this.db.query<{ id: number; nome: string; unidade: string; tema: string }>(
@@ -353,7 +583,14 @@ export class IndicadoresService {
          JOIN "SubtemaConsulta" s ON s."SubtemaConsulta_Id" = i."Indicador_SubtemaId"
          JOIN "TemaConsulta" t ON t."TemaConsulta_Id" = s."SubtemaConsulta_TemaId"
         WHERE i."Indicador_StatusValidacao" = 'APROVADO'
-          AND EXISTS (SELECT 1 FROM "Observacao" o WHERE o."Observacao_IndicadorId" = i."Indicador_Id")
+          AND (
+            EXISTS (SELECT 1 FROM "Observacao" o WHERE o."Observacao_IndicadorId" = i."Indicador_Id")
+            OR (i."Indicador_TipoAgregacao" = 'RECALCULO'
+                AND i."Indicador_NumeradorId" IS NOT NULL
+                AND i."Indicador_DenominadorId" IS NOT NULL
+                AND EXISTS (SELECT 1 FROM "Observacao" o WHERE o."Observacao_IndicadorId" = i."Indicador_NumeradorId")
+                AND EXISTS (SELECT 1 FROM "Observacao" o WHERE o."Observacao_IndicadorId" = i."Indicador_DenominadorId"))
+          )
         ORDER BY ordem, id
         LIMIT $1`,
       [Math.min(Math.max(limite, 1), 12)],
@@ -376,12 +613,27 @@ export class IndicadoresService {
     codigo: string | null;
   }): Promise<{ indicador: string; unidade: string; local: string; pontos: { ano: number; valor: number }[] }> {
     const meta = await this.meta(params.indicadorId);
-    // Anos com observação para o indicador, do mais antigo ao mais novo.
-    const anos = await this.db.query<{ ano: number }>(
-      `SELECT DISTINCT extract(year FROM "Observacao_DataReferencia")::int AS ano
-         FROM "Observacao" WHERE "Observacao_IndicadorId" = $1 ORDER BY ano`,
-      [params.indicadorId],
-    );
+    // Anos com observação, do mais antigo ao mais novo. Um indicador
+    // RECALCULO não tem observação própria (a taxa é derivada): os anos vêm
+    // da INTERSEÇÃO das parcelas — só há ponto quando numerador E
+    // denominador existem no mesmo ano (coerente com a guarda de mesma
+    // referência; achado do builder P7: a série da TMI voltava vazia).
+    const anos =
+      meta.tipo_agregacao === 'RECALCULO' && meta.numerador_id && meta.denominador_id
+        ? await this.db.query<{ ano: number }>(
+            `SELECT DISTINCT extract(year FROM "Observacao_DataReferencia")::int AS ano
+               FROM "Observacao" WHERE "Observacao_IndicadorId" = $1
+             INTERSECT
+             SELECT DISTINCT extract(year FROM "Observacao_DataReferencia")::int AS ano
+               FROM "Observacao" WHERE "Observacao_IndicadorId" = $2
+             ORDER BY ano`,
+            [meta.numerador_id, meta.denominador_id],
+          )
+        : await this.db.query<{ ano: number }>(
+            `SELECT DISTINCT extract(year FROM "Observacao_DataReferencia")::int AS ano
+               FROM "Observacao" WHERE "Observacao_IndicadorId" = $1 ORDER BY ano`,
+            [params.indicadorId],
+          );
     const pontos: { ano: number; valor: number }[] = [];
     let local = '';
     for (const { ano } of anos.rows) {
@@ -402,10 +654,60 @@ export class IndicadoresService {
   }
 
   /**
+   * Pareamento municipal de um indicador RECALCULO — a ÚNICA implementação,
+   * compartilhada por ranking() e mapa() (Gauntlet P6 rodada 2: o mapa lia só
+   * observações diretas e voltava vazio para taxas, contradizendo o ranking
+   * do mesmo dossiê). Regras (idênticas às do ranking desde a P2/P3):
+   *
+   * - parcela vigente ≤ referência por município (observacoes);
+   * - só entra quem tem AMBAS as parcelas NA MESMA data_referencia (guarda
+   *   de dado de EVENTO da P3 — parcelas de anos distintos não formam taxa);
+   * - denominador ≠ 0 (divisão impossível ⇒ fora, sem imputação);
+   * - valor = (num/den) × FatorEscala, arredondado a 1 casa (o mesmo que
+   *   consultar() publica para RECALCULO);
+   * - município sem par fica FORA (RN-005: o mapa pinta "sem dado" e o
+   *   ranking o lista em `ausentes` — as duas superfícies agora coincidem).
+   */
+  private async paresRecalculo(
+    meta: MetaIndicador,
+    codigos: string[],
+    ref: string,
+  ): Promise<{ num: LinhaObs; den: LinhaObs; valor: number }[]> {
+    if (!meta.numerador_id || !meta.denominador_id) {
+      throw new UnprocessableEntityException(
+        `Indicador RECALCULO sem numerador/denominador declarados — dado de catálogo inconsistente.`,
+      );
+    }
+    const [num, den] = await Promise.all([
+      this.observacoes(meta.numerador_id, codigos, ref),
+      this.observacoes(meta.denominador_id, codigos, ref),
+    ]);
+    const denPor = new Map(den.map((d) => [d.codigo_ibge, d]));
+    const pares: { num: LinhaObs; den: LinhaObs; valor: number }[] = [];
+    for (const nu of num) {
+      const de = denPor.get(nu.codigo_ibge);
+      if (!de || Number(de.valor) === 0 || nu.data_referencia !== de.data_referencia) continue;
+      pares.push({
+        num: nu,
+        den: de,
+        valor: Number(((Number(nu.valor) / Number(de.valor)) * meta.fator_escala).toFixed(1)),
+      });
+    }
+    return pares;
+  }
+
+  /**
    * Valor por município para o mapa coroplético (Onda 2): a observação
    * mais recente ≤ referência, município a município, com a procedência
    * resumida. Municípios sem dado NÃO entram na lista (RN-005: ausência
    * é resposta — o mapa os pinta como "sem dado", nunca como zero).
+   *
+   * RECALCULO (Gauntlet P6 rodada 2): taxa não materializa observação
+   * própria — os valores municipais vêm do MESMO pareamento do ranking
+   * (paresRecalculo). Procedência reduzida: `fonte` declara as fontes das
+   * DUAS parcelas juntas ("SIM/... + SINASC/...", mesma convenção da
+   * exportação P5) e `data_referencia` é a referência comum do par — nunca
+   * uma parcela escolhida em silêncio.
    */
   async mapa(params: { indicadorId: number; referencia?: string | null }) {
     const meta = await this.meta(params.indicadorId); // impõe APROVADO (RG-09)
@@ -413,21 +715,412 @@ export class IndicadoresService {
     const codigos = await this.db.query<{ codigo: string }>(
       `SELECT "Municipio_CodigoIbge" AS codigo FROM "Municipio"`,
     );
-    const linhas = await this.observacoes(
-      params.indicadorId,
-      codigos.rows.map((c) => c.codigo),
-      ref,
-    );
-    return {
-      indicador: meta.nome,
-      unidade: meta.unidade,
-      referencia: ref,
-      municipios: linhas.map((l) => ({
+    let municipios: {
+      codigo_ibge: string;
+      valor: number;
+      data_referencia: string;
+      fonte: string;
+      status_dado?: StatusDado;
+    }[];
+    if (meta.tipo_agregacao === 'RECALCULO') {
+      const pares = await this.paresRecalculo(meta, codigos.rows.map((c) => c.codigo), ref);
+      municipios = pares.map((p) => {
+        // E3: a taxa herda o PIOR status das duas parcelas (PRELIMINAR contamina).
+        const status = piorStatus([p.num.status_dado, p.den.status_dado]);
+        return {
+          codigo_ibge: p.num.codigo_ibge,
+          valor: p.valor,
+          data_referencia: p.num.data_referencia, // = p.den.data_referencia (guarda de mesma referência)
+          fonte: [...new Set([p.num.fonte, p.den.fonte])].join(' + '),
+          ...(status !== undefined ? { status_dado: status } : {}),
+        };
+      });
+    } else {
+      const linhas = await this.observacoes(
+        params.indicadorId,
+        codigos.rows.map((c) => c.codigo),
+        ref,
+      );
+      municipios = linhas.map((l) => ({
         codigo_ibge: l.codigo_ibge,
         valor: Number(l.valor),
         data_referencia: l.data_referencia,
         fonte: l.fonte,
-      })),
+        ...(l.status_dado !== null ? { status_dado: l.status_dado } : {}),
+      }));
+    }
+    return {
+      indicador: meta.nome,
+      unidade: meta.unidade,
+      referencia: ref,
+      municipios,
     };
+  }
+
+  /**
+   * Ranking completo dos municípios do estado pelo valor do indicador
+   * (Gauntlet P2 · MOTOR-RANKING). Determinístico de ponta a ponta:
+   *
+   * - valor municipal = observação vigente ≤ referência (mesma regra do
+   *   motor); em RECALCULO o valor é (num/den)×FatorEscala do PRÓPRIO município e
+   *   só entra quem tem AMBAS as parcelas NA MESMA referência e com
+   *   denominador ≠ 0 (RN-005 — sem imputação; taxa 0 com parcelas válidas
+   *   é resultado legítimo e ENTRA);
+   * - ordem: valor decrescente; empate = MESMA posição (competition
+   *   ranking 1,2,2,4) com desempate de exibição por nome (comparação por
+   *   code unit — estável entre ambientes/locales) e código IBGE;
+   * - média estadual = rollup do PRÓPRIO motor (consultarNucleo/ESTADO,
+   *   RN-003), nunca reimplementado: para RECALCULO e MEDIA_PONDERADA o
+   *   valor estadual JÁ é a média de referência; para SOMA o rollup é um
+   *   total, então a média é total ÷ municípios agregados pelo motor;
+   *   NAO_AGREGAVEL não tem média estadual, mas o ranking permanece
+   *   válido (cada valor é municipal) — media_estadual: null com motivo;
+   * - município sem dado fica FORA, listado em `ausentes` (RN-005);
+   * - indicador sem NENHUMA observação propaga a NotFoundException com
+   *   contexto de `ausencia()` (referência mais recente, cobertura);
+   * - procedência completa (quinteto, §12.1) por linha.
+   */
+  async ranking(params: {
+    indicadorId: number;
+    referencia?: string | null;
+    n?: number;
+  }): Promise<Ranking> {
+    const meta = await this.meta(params.indicadorId); // RG-09: só APROVADO
+    const ref = params.referencia ?? new Date().toISOString().slice(0, 10);
+    const n = Math.min(Math.max(Math.trunc(params.n ?? 5), 1), 142);
+    const { rotulo } = await this.territorio.resolverRecorte('ESTADO', null, ref);
+
+    const todos = await this.db.query<{ codigo: string; nome: string }>(
+      `SELECT "Municipio_CodigoIbge" AS codigo, "Municipio_Nome" AS nome FROM "Municipio"`,
+    );
+    const nomePor = new Map(todos.rows.map((m) => [m.codigo, m.nome]));
+    const codigos = todos.rows.map((m) => m.codigo);
+
+    // Mesmo arredondamento que consultar() publica (RECALCULO: 1 casa).
+    const casas = meta.tipo_agregacao === 'RECALCULO' ? 1 : 2;
+    const valores: { codigo_ibge: string; valor: number; procedencia: Procedencia[] }[] = [];
+
+    if (meta.tipo_agregacao === 'RECALCULO') {
+      // RN-005: sem AMBAS as parcelas (ou com denominador zero, taxa
+      // incalculável) o município fica FORA — nunca imputado, nunca zero
+      // imputado. (Numerador 0 com denominador > 0 é taxa 0 LEGÍTIMA —
+      // o melhor resultado possível — e ENTRA no ranking.)
+      // Guarda de MESMA REFERÊNCIA (rodada 2 do gauntlet P3): parcelas de
+      // taxa são dados de EVENTO (contagens anuais) — vigências "≤ ref"
+      // descasadas (óbitos de um ano ÷ nascidos de outro) fabricariam uma
+      // taxa herdada do passado; município divergente vai para `ausentes`.
+      // Pareamento e cálculo em paresRecalculo — o MESMO usado por mapa()
+      // (P6 rodada 2: ranking e coroplético do dossiê nunca mais divergem).
+      const pares = await this.paresRecalculo(meta, codigos, ref);
+      for (const p of pares) {
+        valores.push({
+          codigo_ibge: p.num.codigo_ibge,
+          valor: p.valor,
+          procedencia: this.procedenciaDe([p.num, p.den]),
+        });
+      }
+    } else {
+      // SOMA / MEDIA_PONDERADA / NAO_AGREGAVEL: o valor municipal é a
+      // própria observação vigente (peso e rollup só existem no agregado).
+      const linhas = await this.observacoes(params.indicadorId, codigos, ref);
+      for (const l of linhas) {
+        valores.push({
+          codigo_ibge: l.codigo_ibge,
+          valor: Number(Number(l.valor).toFixed(casas)),
+          procedencia: this.procedenciaDe([l]),
+        });
+      }
+    }
+
+    if (!valores.length) return this.ausencia(meta, rotulo, 'ESTADO', params.indicadorId, ref);
+
+    // Média (e total, quando fizer sentido) estaduais pelo MESMO rollup do
+    // motor — nunca reimplementados aqui.
+    let mediaEstadual: number | null = null;
+    let totalEstadual: number | null = null;
+    let mediaMotivo: string | undefined;
+    if (meta.tipo_agregacao === 'NAO_AGREGAVEL') {
+      mediaMotivo =
+        `O indicador "${meta.nome}" é NAO_AGREGAVEL (RN-003): não existe média estadual válida. ` +
+        `O ranking entre municípios permanece válido porque cada valor é municipal.`;
+    } else {
+      const estado = await this.consultarNucleo({
+        indicadorId: params.indicadorId,
+        recorte: 'ESTADO',
+        codigo: null,
+        dataReferencia: ref,
+      });
+      if (meta.tipo_agregacao === 'SOMA') {
+        totalEstadual = estado.valor; // contagem: o rollup É o total do estado
+        mediaEstadual = Number(
+          (estado.valor / (estado.municipios_agregados ?? valores.length)).toFixed(2),
+        );
+      } else {
+        mediaEstadual = estado.valor; // RECALCULO/MEDIA_PONDERADA: o rollup JÁ é a média
+      }
+    }
+
+    // Ordenação determinística: valor desc; empate exibido por nome
+    // (code unit, estável entre locales) e, por fim, código IBGE.
+    valores.sort((a, b) => {
+      if (b.valor !== a.valor) return b.valor - a.valor;
+      const na = nomePor.get(a.codigo_ibge) ?? a.codigo_ibge;
+      const nb = nomePor.get(b.codigo_ibge) ?? b.codigo_ibge;
+      if (na !== nb) return na < nb ? -1 : 1;
+      return a.codigo_ibge < b.codigo_ibge ? -1 : 1;
+    });
+
+    // Competition ranking (1,2,2,4) nas duas pontas: topo e base.
+    const total = valores.length;
+    const posicoes = new Array<number>(total);
+    for (let i = 0, p = 1; i < total; i++) {
+      if (i > 0 && valores[i].valor !== valores[i - 1].valor) p = i + 1;
+      posicoes[i] = p;
+    }
+    const posicoesInversas = new Array<number>(total);
+    for (let i = total - 1, p = 1; i >= 0; i--) {
+      if (i < total - 1 && valores[i].valor !== valores[i + 1].valor) p = total - i;
+      posicoesInversas[i] = p;
+    }
+
+    const municipios: RankingMunicipio[] = valores.map((v, i) => ({
+      posicao: posicoes[i],
+      codigo_ibge: v.codigo_ibge,
+      nome: nomePor.get(v.codigo_ibge) ?? v.codigo_ibge,
+      valor: v.valor,
+      delta_media_estadual:
+        mediaEstadual === null ? null : Number((v.valor - mediaEstadual).toFixed(2)),
+      top_n: posicoes[i] <= n,
+      bottom_n: posicoesInversas[i] <= n,
+      procedencia: v.procedencia,
+    }));
+
+    const comDado = new Set(valores.map((v) => v.codigo_ibge));
+    const ausentes = codigos.filter((c) => !comDado.has(c)).sort();
+
+    const resposta: Ranking = {
+      indicador: meta.nome,
+      unidade: meta.unidade,
+      referencia: ref,
+      agregacao: meta.tipo_agregacao,
+      total_estadual: totalEstadual,
+      media_estadual: mediaEstadual,
+      ...(mediaMotivo !== undefined ? { media_estadual_motivo: mediaMotivo } : {}),
+      total_municipios: codigos.length,
+      ausentes: { total: ausentes.length, codigos: ausentes },
+      municipios,
+    };
+
+    // Trilha imutável, análoga a CONSULTA_INDICADOR (RF-CHAT-009).
+    await this.auditoria.registrar('api', 'CONSULTA_RANKING', 'Indicador', String(params.indicadorId), {
+      referencia: ref,
+      n,
+      total_municipios: resposta.total_municipios,
+      ausentes: resposta.ausentes.total,
+      media_estadual: mediaEstadual,
+    });
+
+    return resposta;
+  }
+
+  /**
+   * Decomposição por causa/categoria no território (Gauntlet P3 · MOTOR-CAUSAS).
+   * Lê a tabela irmã "ObservacaoCausa" (db/49): valores ABSOLUTOS por
+   * (dimensão, categoria) na referência VIGENTE de cada dimensão — a mais
+   * recente ≤ referência pedida — mais a participação % sobre o total da
+   * dimensão (1 casa). Determinístico de ponta a ponta:
+   *
+   * - território: município (codigo) ou estado (codigo null → linhas com
+   *   "ObservacaoCausa_CodigoIbge" IS NULL, o recorte estadual da carga);
+   * - taxa (RECALCULO) sem decomposição própria delega ao NUMERADOR — a
+   *   decomposição de uma taxa é a decomposição do que ela conta
+   *   (`decomposicao_de` declara a delegação na resposta);
+   * - RN-005: sem linhas para o pedido, NotFoundException com contexto —
+   *   quais dimensões EXISTEM para o território, ou qual a cobertura da
+   *   dimensão pedida (referência mais recente, territórios cobertos);
+   *   nunca zero, nunca estimativa;
+   * - procedência (quinteto, §12.1) por dimensão, via JOIN Fonte/Carga.
+   */
+  async causas(params: {
+    indicadorId: number;
+    codigo?: string | null;
+    referencia?: string | null;
+    dimensao?: string | null;
+  }): Promise<Causas> {
+    const meta = await this.meta(params.indicadorId); // RG-09: só APROVADO
+    const ref = params.referencia ?? new Date().toISOString().slice(0, 10);
+    const codigo = params.codigo ?? null;
+    const dimensao = params.dimensao ?? null;
+
+    // Evolução E1: a allowlist vem do catálogo "DimensaoObservacao" (db/54),
+    // não de lista fixa em código — 400 honesto com o vocabulário vigente.
+    if (dimensao) {
+      const catalogo = await this.dimensoesObservacao();
+      if (!catalogo.some((d) => d.codigo === dimensao)) {
+        throw new BadRequestException(
+          `dimensao deve ser uma de: ${catalogo.map((d) => d.codigo).join(', ')}`,
+        );
+      }
+    }
+
+    const recorte: 'MUNICIPIO' | 'ESTADO' = codigo ? 'MUNICIPIO' : 'ESTADO';
+    const { rotulo } = await this.territorio.resolverRecorte(recorte, codigo, ref);
+
+    // A taxa não tem causa própria: decompõe-se o numerador (documentado).
+    let alvoId = meta.id;
+    let decomposicaoDe: string | undefined;
+    if (meta.tipo_agregacao === 'RECALCULO' && meta.numerador_id) {
+      const proprias = await this.db.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM "ObservacaoCausa" WHERE "ObservacaoCausa_IndicadorId" = $1`,
+        [meta.id],
+      );
+      if (proprias.rows[0].n === '0') {
+        const num = await this.meta(meta.numerador_id);
+        alvoId = num.id;
+        decomposicaoDe = num.nome;
+      }
+    }
+
+    const r = await this.db.query<{
+      dimensao: Causas['dimensoes'][number]['dimensao'];
+      categoria: string;
+      valor: string;
+      data_referencia: string;
+      fonte: string;
+      url: string | null;
+      licenca: string;
+      data_extracao: string | null;
+      hash: string | null;
+    }>(
+      `SELECT oc."ObservacaoCausa_Dimensao"            AS dimensao,
+              oc."ObservacaoCausa_Categoria"           AS categoria,
+              oc."ObservacaoCausa_Valor"::text         AS valor,
+              oc."ObservacaoCausa_DataReferencia"::text AS data_referencia,
+              f."Fonte_Nome"                           AS fonte,
+              f."Fonte_Url"                            AS url,
+              f."Fonte_Licenca"                        AS licenca,
+              c."Carga_DataExtracao"::text             AS data_extracao,
+              c."Carga_HashSha256"                     AS hash
+         FROM "ObservacaoCausa" oc
+         JOIN "Fonte" f ON f."Fonte_Id" = oc."ObservacaoCausa_FonteId"
+         LEFT JOIN "Carga" c ON c."Carga_Id" = oc."ObservacaoCausa_CargaId"
+        WHERE oc."ObservacaoCausa_IndicadorId" = $1
+          AND oc."ObservacaoCausa_CodigoIbge" IS NOT DISTINCT FROM $2
+          AND ($3::text IS NULL OR oc."ObservacaoCausa_Dimensao" = $3)
+          -- referência vigente POR dimensão: a mais recente ≤ pedida
+          AND oc."ObservacaoCausa_DataReferencia" = (
+                SELECT max(x."ObservacaoCausa_DataReferencia")
+                  FROM "ObservacaoCausa" x
+                 WHERE x."ObservacaoCausa_IndicadorId" = oc."ObservacaoCausa_IndicadorId"
+                   AND x."ObservacaoCausa_CodigoIbge" IS NOT DISTINCT FROM $2
+                   AND x."ObservacaoCausa_Dimensao" = oc."ObservacaoCausa_Dimensao"
+                   AND x."ObservacaoCausa_DataReferencia" <= $4::date)
+        ORDER BY dimensao, oc."ObservacaoCausa_Valor" DESC, categoria`,
+      [alvoId, codigo, dimensao, ref],
+    );
+
+    if (!r.rows.length) return this.ausenciaCausas(meta, alvoId, rotulo, codigo, dimensao, ref);
+
+    const porDimensao = new Map<string, typeof r.rows>();
+    for (const linha of r.rows) {
+      if (!porDimensao.has(linha.dimensao)) porDimensao.set(linha.dimensao, []);
+      porDimensao.get(linha.dimensao)!.push(linha);
+    }
+
+    const dimensoes: CausaDimensao[] = [...porDimensao.entries()].map(([dim, linhas]) => {
+      const total = linhas.reduce((s, l) => s + Number(l.valor), 0);
+      const procedencia = new Map<string, Procedencia>();
+      for (const l of linhas) {
+        const chave = `${l.fonte}|${l.data_referencia}|${l.hash ?? ''}`;
+        if (!procedencia.has(chave))
+          procedencia.set(chave, {
+            fonte: l.fonte,
+            url: l.url,
+            data_referencia: l.data_referencia,
+            data_extracao: l.data_extracao ?? '',
+            licenca: l.licenca,
+            hash: l.hash ?? '',
+          });
+      }
+      return {
+        dimensao: dim as CausaDimensao['dimensao'],
+        referencia: linhas[0].data_referencia,
+        total,
+        categorias: linhas.map((l) => ({
+          categoria: l.categoria,
+          valor: Number(l.valor),
+          participacao: total === 0 ? 0 : Number(((Number(l.valor) / total) * 100).toFixed(1)),
+        })),
+        procedencia: [...procedencia.values()],
+      };
+    });
+
+    const resposta: Causas = {
+      indicador: meta.nome,
+      unidade: meta.unidade,
+      recorte,
+      local: rotulo,
+      referencia: ref,
+      ...(decomposicaoDe !== undefined ? { decomposicao_de: decomposicaoDe } : {}),
+      dimensoes,
+    };
+
+    // Trilha imutável, análoga a CONSULTA_INDICADOR/CONSULTA_RANKING.
+    await this.auditoria.registrar('api', 'CONSULTA_CAUSAS', 'Indicador', String(params.indicadorId), {
+      codigo,
+      referencia: ref,
+      dimensao,
+      dimensoes: dimensoes.map((d) => ({ dimensao: d.dimensao, referencia: d.referencia, categorias: d.categorias.length })),
+    });
+
+    return resposta;
+  }
+
+  /** RN-005 aplicada à decomposição: a ausência responde com o que EXISTE. */
+  private async ausenciaCausas(
+    meta: MetaIndicador,
+    alvoId: number,
+    rotulo: string,
+    codigo: string | null,
+    dimensao: string | null,
+    ref: string,
+  ): Promise<never> {
+    const disp = await this.db.query<{ dimensao: string; ultima: string; territorios: string }>(
+      `SELECT "ObservacaoCausa_Dimensao" AS dimensao,
+              max("ObservacaoCausa_DataReferencia")::text AS ultima,
+              count(DISTINCT coalesce("ObservacaoCausa_CodigoIbge",'ESTADO'))::text AS territorios
+         FROM "ObservacaoCausa"
+        WHERE "ObservacaoCausa_IndicadorId" = $1
+        GROUP BY 1 ORDER BY 1`,
+      [alvoId],
+    );
+    if (!disp.rows.length) {
+      throw new NotFoundException(
+        `Não há decomposição por causa publicada para "${meta.nome}". ` +
+          `O eixo de causas pode estar em construção ou sem fonte mapeada.`,
+      );
+    }
+    const doTerritorio = await this.db.query<{ dimensao: string; ultima: string }>(
+      `SELECT "ObservacaoCausa_Dimensao" AS dimensao,
+              max("ObservacaoCausa_DataReferencia")::text AS ultima
+         FROM "ObservacaoCausa"
+        WHERE "ObservacaoCausa_IndicadorId" = $1
+          AND "ObservacaoCausa_CodigoIbge" IS NOT DISTINCT FROM $2
+        GROUP BY 1 ORDER BY 1`,
+      [alvoId, codigo],
+    );
+    const catalogo = disp.rows
+      .map((d) => `${d.dimensao} (até ${d.ultima}, ${d.territorios} território(s))`)
+      .join('; ');
+    if (doTerritorio.rows.length) {
+      throw new NotFoundException(
+        `Não há decomposição ${dimensao ?? 'por causa'} de "${meta.nome}" para ${rotulo} até ${ref}. ` +
+          `Para este território existem: ${doTerritorio.rows.map((d) => `${d.dimensao} (até ${d.ultima})`).join('; ')}.`,
+      );
+    }
+    throw new NotFoundException(
+      `Não há decomposição por causa de "${meta.nome}" para ${rotulo}. ` +
+        `Dimensões disponíveis na base: ${catalogo}.`,
+    );
   }
 }

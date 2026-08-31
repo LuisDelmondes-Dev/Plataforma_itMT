@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "SICONFI/Tesouro Nacional — DCA Anexo I-D (despesas orçamentárias)",
+    "origem": "Secretaria do Tesouro Nacional — SICONFI (Sistema de Informações Contábeis e Fiscais do Setor Público Brasileiro)",
+    "url": "https://apidatalake.tesouro.gov.br/ords/siconfi/tt/dca",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Dados abertos do Tesouro Nacional (Lei 12.527/2011; LC 101/2000 art. 48)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": { "nome": "Despesas orçamentárias empenhadas", "unidade": "R$", "tipoAgregacao": "SOMA", "subtemaNome": "Execução orçamentária" },
+  "colunas": { "codigoIbge": "codigo_ibge", "valor": "valor" },
+  "dataReferencia": "2024-12-31",
+  "separador": ";",
+  "agregarPorMunicipio": false
+}

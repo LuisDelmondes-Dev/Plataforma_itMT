@@ -109,6 +109,9 @@ export async function apiPost<T>(
   return r.json();
 }
 
+/** E3: fase de homologação do dado na fonte; ausente = desconhecido (nunca chutado). */
+export type StatusDado = 'PRELIMINAR' | 'CONSOLIDADO' | 'REVISADO';
+
 export interface Procedencia {
   fonte: string;
   url: string | null;
@@ -116,6 +119,7 @@ export interface Procedencia {
   data_extracao: string;
   licenca: string;
   hash: string;
+  status_dado?: StatusDado;
 }
 
 export interface Resultado {
@@ -126,5 +130,7 @@ export interface Resultado {
   local: string;
   agregacao: string;
   municipios_agregados?: number;
+  /** E3: o pior status das parcelas (PRELIMINAR contamina); ausente = não afirmável. */
+  status_dado?: StatusDado;
   procedencia: Procedencia[];
 }

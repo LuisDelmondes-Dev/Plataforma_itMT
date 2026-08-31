@@ -112,7 +112,12 @@ function Mapa() {
     apiGet<Destaque[]>('/indicadores/destaque?limite=12&detalhe=1')
       .then((d) => {
         setIndicadores(d);
-        if (d.length) setIndicadorId(indUrl && d.some((i) => i.id === indUrl) ? indUrl : d[0].id);
+        // O permalink é a fonte de verdade MESMO fora da lista de destaque
+        // (P6 rodada 2: o dossiê linka indicadores aprovados — ex. taxas —
+        // que a lista curta pode não trazer; o select ganha a opção extra).
+        // Indicador inexistente/não aprovado vira o 404 honesto do motor.
+        if (indUrl) setIndicadorId(indUrl);
+        else if (d.length) setIndicadorId(d[0].id);
         urlInicialAplicada.current = true;
       })
       .catch(() => setErro('Falha ao carregar o catálogo.'));
@@ -348,6 +353,11 @@ function Mapa() {
             {indicadores.map((i) => (
               <option key={i.id} value={i.id}>{i.tema} — {i.nome}</option>
             ))}
+            {/* Indicador vindo do permalink fora da lista curta: opção extra
+                nomeada pela resposta do próprio mapa (aditivo). */}
+            {indicadorId !== null && !indicadores.some((i) => i.id === indicadorId) && (
+              <option value={indicadorId}>{dados?.indicador ?? `Indicador ${indicadorId}`}</option>
+            )}
           </select>
         </label>
         <label className="label-md" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

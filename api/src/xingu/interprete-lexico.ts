@@ -11,6 +11,13 @@ export interface ItemCatalogo {
   id: number;
   nome: string;
   unidade: string;
+  /** Nome do tema da taxonomia (área da pesquisa persistida — P4); null se não vinculado. */
+  tema: string | null;
+  /**
+   * Polaridade do catálogo (db/51 — P7): MAIOR_MELHOR | MENOR_MELHOR | null.
+   * null ⇒ o A16 não julga desvio como bom/ruim (sugestões só factuais).
+   */
+  polaridade: 'MAIOR_MELHOR' | 'MENOR_MELHOR' | null;
   sinonimos: string[];
 }
 
@@ -26,6 +33,19 @@ const SINONIMOS: Record<string, string[]> = {
   'Extensão de estradas vicinais': [
     'extensao de estradas vicinais', 'estradas vicinais', 'estrada vicinal',
     'quilometros de estrada vicinal', 'km de estrada vicinal', 'malha vicinal',
+  ],
+  // Gauntlet (crítico P9): indicadores reais de db/50 e db/53 sem sinônimo
+  // caíam em clarificação mesmo com pergunta natural ("mortalidade infantil
+  // em Cuiabá"). Cobertura léxica acompanha o catálogo.
+  'Taxa de mortalidade infantil': [
+    'taxa de mortalidade infantil', 'mortalidade infantil',
+    'indice de mortalidade infantil', 'mortalidade de criancas',
+  ],
+  'Óbitos infantis': ['obitos infantis', 'mortes infantis', 'obitos de menores de um ano'],
+  'Nascidos vivos': ['nascidos vivos', 'nascimentos'],
+  'Despesas orçamentárias empenhadas': [
+    'despesas orcamentarias empenhadas', 'despesas orcamentarias', 'despesas empenhadas',
+    'despesas', 'execucao orcamentaria', 'gastos publicos', 'orcamento executado',
   ],
 };
 
@@ -57,9 +77,13 @@ export class CatalogoService {
       this.db.query<{ codigo: string; nome: string }>(
         `SELECT "Consorcio_Id"::text AS codigo, "Consorcio_Nome" AS nome FROM "Consorcio"`,
       ),
-      this.db.query<{ id: number; nome: string; unidade: string }>(
-        `SELECT "Indicador_Id" AS id, "Indicador_Nome" AS nome, "Indicador_Unidade" AS unidade
-           FROM "Indicador" WHERE "Indicador_StatusValidacao" = 'APROVADO'`, // RG-09 vale na borda também
+      this.db.query<{ id: number; nome: string; unidade: string; tema: string | null; polaridade: 'MAIOR_MELHOR' | 'MENOR_MELHOR' | null }>(
+        `SELECT i."Indicador_Id" AS id, i."Indicador_Nome" AS nome, i."Indicador_Unidade" AS unidade,
+                t."TemaConsulta_Nome" AS tema, i."Indicador_Polaridade" AS polaridade
+           FROM "Indicador" i
+           LEFT JOIN "SubtemaConsulta" s ON s."SubtemaConsulta_Id" = i."Indicador_SubtemaId"
+           LEFT JOIN "TemaConsulta" t ON t."TemaConsulta_Id" = s."SubtemaConsulta_TemaId"
+          WHERE i."Indicador_StatusValidacao" = 'APROVADO'`, // RG-09 vale na borda também
       ),
     ]);
     const marcar = (r: { codigo: string; nome: string }) => ({ ...r, nomeN: normalizar(r.nome) });
