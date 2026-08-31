@@ -62,7 +62,9 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
   uma com consumidor real no código e teste no ratchet**. Nunca copie DDL externo,
   nunca crie tabela sem quem a consuma (E7–E14/E16 estão na fila do ADR justamente
   por isso). O modelo externo é instalado só no laboratório `itmt_dw_homolog`
-  (Postgres local, sem PostGIS: colunas `geometry` viram stub `text`), para
+  (Postgres 18 local, sem PostGIS: colunas `geometry` viram stub `text`) — e,
+  quando o pacote trouxer harness próprio, num contêiner PG17+PostGIS, que foi
+  como o gate geoespacial fechou em 31/08 (226 colunas, todas SRID 4674), para
   validação física — os pacotes chegam com **zero GRANT/RLS/particionamento** e
   já reincidiram 5× na classe de defeito "seed silencioso" (`INSERT ... SELECT` de
   fonte vazia que não insere nada e não dá erro). Ao receber um pacote novo: rito
