@@ -131,14 +131,17 @@ test('catálogo: subtema "Execução orçamentária" no tema "Economia — Setor
   });
 });
 
-test('cobertura na malha do teste: 13 municípios × 3 exercícios, nenhum valor 0 materializado', async () => {
-  // db/53 é malha-relativo e roda ANTES da malha completa E4 (db/57): no
-  // banco de teste ele encontra 13 municípios (12 do seed db/02 + Nova
-  // Mutum do db/05) — todos entregaram a DCA nos 3 exercícios (conferido na
-  // coleta de 27/08/2026). Por ORDEM de migração, exatamente 39 observações
-  // entram, e NENHUMA com valor 0 (ausência de entrega NUNCA vira zero —
-  // dado declaratório, RN-005). Completar o SICONFI para a malha de 142 é
-  // uma re-aplicação futura nos moldes da seção (e) do db/57.
+test('cobertura sobre a malha INTEIRA: 419 observações, nenhum valor 0 materializado', async () => {
+  // Este assert já foi `39`, e o 39 era um DEFEITO cristalizado pela catraca.
+  // O db/53 é malha-relativo e roda ANTES do db/57, que instala os 142
+  // municípios: numa instalação limpa o JOIN encontrava 13 municípios e
+  // descartava 380 das 419 linhas, em silêncio. O db/50 escapava porque o
+  // db/57 o re-semeia; o SICONFI não tinha seção equivalente — agora tem, no
+  // db/67, com checagem de contagem que falha alto.
+  //
+  // 419 = 140 (2022) + 140 (2023) + 139 (2024): nem todo município entregou a
+  // DCA em todo exercício, e a ausência de entrega NUNCA vira zero (dado
+  // declaratório, RN-005) — por isso `zeros` continua tendo que ser 0.
   const n = await pool.query(
     `SELECT count(*)::int AS n,
             count(*) FILTER (WHERE "Observacao_Valor"=0)::int AS zeros,
@@ -146,9 +149,9 @@ test('cobertura na malha do teste: 13 municípios × 3 exercícios, nenhum valor
        FROM "Observacao" WHERE "Observacao_IndicadorId"=$1`,
     [id],
   );
-  assert.equal(n.rows[0].n, 39, 'malha 13 × exercícios 3');
+  assert.equal(n.rows[0].n, 419, 'malha inteira × 3 exercícios, descontadas as não-entregas');
   assert.equal(n.rows[0].zeros, 0, 'db/53 não pode materializar zero (≠ caso SIM/db/50)');
-  assert.equal(n.rows[0].municipios, 13);
+  assert.equal(n.rows[0].municipios, 141, 'os 141 municípios instalados — 5101837 só existe a partir de 2025');
 });
 
 test('3 municípios batem com o valor bruto conferido na origem (API SICONFI, 27/08/2026)', async () => {
@@ -175,15 +178,26 @@ test('total estadual por exercício = Σ municípios recomputada por SQL (motor 
   for (const ano of ANOS) {
     const ref = `${ano}-12-31`;
     const linhas = await vigentes(ref);
-    // cobertura plena na malha do teste: a vigência de cada município é o
-    // PRÓPRIO exercício (nada herdado de ano anterior)
-    assert.equal(linhas.length, 13, `${ano}: 13 municípios vigentes`);
-    for (const l of linhas) assert.equal(l.referencia, ref, `${l.codigo}: vigência herdada de outro ano`);
+    // CONTAGEM relativa de propósito: um literal aqui foi o que cristalizou o
+    // SICONFI truncado em 39 observações por quase uma semana.
+    assert.ok(linhas.length > 100, `${ano}: cobertura suspeita — ${linhas.length} municípios vigentes`);
+
+    // Sobre a malha inteira, herança entre exercícios PASSA a existir e é
+    // legítima numa consulta pontual: quem não entregou a DCA de 2023 tem,
+    // como dado mais recente conhecido em 31/12/2023, o exercício de 2022.
+    // (Com a malha de 13 do teste antigo isso nunca acontecia, porque todos
+    // os 13 declaravam todo ano.) O que NÃO pode acontecer é vigência do
+    // FUTURO — isso seria o motor lendo à frente da referência pedida.
+    for (const l of linhas) {
+      assert.ok(l.referencia <= ref,
+        `${l.codigo}: vigência ${l.referencia} é POSTERIOR à referência ${ref}`);
+    }
     const soma = linhas.reduce((s, x) => s + x.valor, 0);
     const estado = await svc.consultar({ indicadorId: id, recorte: 'ESTADO', codigo: null, dataReferencia: ref });
     assert.equal(estado.valor, Number(soma.toFixed(2)), `${ano}: Σ do motor ≠ Σ SQL`);
     assert.equal(estado.agregacao, 'SOMA');
-    assert.equal(estado.municipios_agregados, 13);
+    assert.equal(estado.municipios_agregados, linhas.length,
+      `${ano}: o agregado tem que contar exatamente os municípios vigentes`);
   }
 });
 
@@ -202,7 +216,12 @@ test('ranking (P2) funciona no indicador de finanças sem código especial por �
   const r = await svc.ranking({ indicadorId: id, referencia: REF });
   assert.equal(r.agregacao, 'SOMA');
   assert.equal(r.total_municipios, r.municipios.length + r.ausentes.total);
-  assert.equal(r.municipios.length, 13, 'malha completa do teste entregou 2024');
+  // Contagem relativa: o ranking usa vigência ≤ referência, então entra
+  // também quem declarou num exercício anterior. O invariante que importa é o
+  // da linha acima (ranqueados + ausentes = total); aqui basta exigir
+  // cobertura real, sem literal que a próxima carga invalide.
+  assert.ok(r.municipios.length > 100,
+    `cobertura suspeita no ranking: ${r.municipios.length} municípios`);
 
   // ordem decrescente + competition ranking
   for (let i = 1; i < r.municipios.length; i++) {
@@ -262,7 +281,12 @@ test('RN-005: município sem NENHUMA entrega ⇒ 404 com contexto, `ausentes` no
     const soma = linhas.reduce((s, x) => s + x.valor, 0);
     const estado = await svc.consultar({ indicadorId: id, recorte: 'ESTADO', codigo: null, dataReferencia: REF });
     assert.equal(estado.valor, Number(soma.toFixed(2)));
-    assert.equal(estado.municipios_agregados, 12, 'agregado deveria excluir o ausente');
+    // Relativo, não absoluto: o número exato depende da malha, e um literal
+    // aqui foi justamente o que cristalizou o defeito do SICONFI truncado.
+    // O que o teste precisa afirmar é a REGRA — o agregado conta exatamente
+    // quem declarou, nem um a mais.
+    assert.equal(estado.municipios_agregados, linhas.length,
+      'agregado deveria contar exatamente os municípios que declararam, excluindo o ausente');
   } finally {
     for (const o of originais.rows)
       await pool.query(
