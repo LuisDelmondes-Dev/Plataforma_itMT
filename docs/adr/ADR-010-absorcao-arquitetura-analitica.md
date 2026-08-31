@@ -485,3 +485,34 @@ quando/SE um DW dimensional tipado se justificar (E4+); a cadeia de auditoria
 nunca é convertida — move-se verbatim ou permanece. Risco aceito: conviver
 com dois vocabulários (convenção da casa × nomes da proposta) na documentação
 — mitigado registrando neste ADR o mapeamento conceitual.
+
+Adendo 31/08 (Core R2.3.5 — Execução Física Certificada): 5 tabelas de
+certificação (snapshot imutável de gates e artefatos, raiz SHA-256 das
+evidências, payload canônico, verificador independente). Aplicou limpa no
+laboratório. Teste adversarial próprio, seis tentativas de fabricar um
+certificado sem execução real: **cinco bloqueadas corretamente** — inclusive o
+caso `NAO_EXECUTADO`, que recusaria a nossa própria homologação parcial de 6
+de 12 gates. **Uma passou:** um artefato inventado, com SHA-256 arbitrário e
+sem arquivo por trás, satisfaz a elegibilidade — a função verifica a FORMA da
+evidência, não a PROCEDÊNCIA. Reportado ao gerador com a cura sugerida (re-ler
+os bytes de cada artefato e conferir contra o hash antes de declarar elegível,
+como o certificador já faz com o core.sql e os arquivos de runtime).
+
+**SEM absorção imediata, por disciplina.** A ideia central — "certificação é
+consequência da evidência, nunca um status manual" — já é doutrina desta casa
+em duas formas: `EventoAuditoria` encadeada por SHA-256 com verificador
+independente (`verificar-cadeia.mjs`, que recomputa a cadeia inteira sobre os
+payloads reais), e o rito RG-09, em que publicar é ato humano registrado. Fica
+como **E22**, com gatilho explícito: ligar criptograficamente o ledger de
+evidências (`docs/evidence/ledger.md`, hoje prosa em markdown) às linhas de
+`EventoAuditoria` que sustentam cada EV, QUANDO houver consumidor real — por
+exemplo uma auditoria externa que precise verificar um gate sem confiar no
+repositório. Criar as tabelas antes disso seria violar a própria regra do ADR:
+nenhuma tabela sem quem a consuma.
+
+Registrado também que o pedido do pacote para provisionar um projeto de banco
+em nuvem NÃO foi atendido: é ato externo com custo, solicitado dentro de um
+documento e não pelo usuário, e contradiz o `Guia_Local_Only.md` da mesma
+entrega, que declara a plataforma local-first. A execução física já acontece
+localmente; o que falta para os seis gates restantes é o pacote Python do
+runtime, nunca entregue.
