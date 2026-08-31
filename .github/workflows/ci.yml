@@ -18,7 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # PostGIS é REQUISITO desde a db/68, que traz o modelo analítico e o DW
+        # com 226 colunas de geometria em SRID 4674. A imagem `postgres:16` sem
+        # a extensão faria toda migração a partir da 68 falhar no CI.
+        image: postgis/postgis:16-3.4
         env:
           POSTGRES_USER: itmt
           POSTGRES_PASSWORD: itmt

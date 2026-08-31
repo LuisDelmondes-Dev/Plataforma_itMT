@@ -9,7 +9,7 @@ programa público estruturado em fases **F0–F7**, não um app CRUD. Quatro par
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16+ / pgvector | 67 migrações SQL escritas à mão, **sem ORM** |
+| `db/` | PostgreSQL 16+ / pgvector | 68 migrações SQL escritas à mão, **sem ORM** |
 | `api/` | NestJS 11 + driver `pg` cru | o **motor determinístico** |
 | `web/` | Next.js 16 / React 19 (App Router) | portal público, 23 páginas |
 | `coletores/` | Python | raspagem de fontes sem API (CNES/TabNet, INEP) |
@@ -61,11 +61,17 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
   uma a uma por migração nova, adaptadas à convenção `"Tabela_Atributo"`, **cada
   uma com consumidor real no código e teste no ratchet**. Nunca copie DDL externo,
   nunca crie tabela sem quem a consuma (E7–E14/E16 estão na fila do ADR justamente
-  por isso). O modelo externo é instalado só no laboratório `itmt_dw_homolog`
-  (Postgres 18 local, sem PostGIS: colunas `geometry` viram stub `text`) — e,
-  quando o pacote trouxer harness próprio, num contêiner PG17+PostGIS, que foi
-  como o gate geoespacial fechou em 31/08 (226 colunas, todas SRID 4674), para
-  validação física — os pacotes chegam com **zero GRANT/RLS/particionamento** e
+  por isso). **DIRETRIZ NOVA (31/08/2026, decisão do usuário — supera a regra
+  de laboratório):** o modelo externo COMPLETO passa a viver no próprio banco
+  `itmt` (db/68: 1.299 tabelas em 20 schemas, entre eles `dw`), e daqui em
+  diante toda tabela e todo DW nascem ali. Consequências que valem saber: os
+  dois modelos convivem sem colisão (a casa em `public` PascalCase, o externo
+  em schemas próprios snake_case); **as 132 tabelas de fato estão VAZIAS** —
+  quem as popularia é um runtime de ingestão nunca entregue; e os schemas
+  analíticos nascem com privilégio REVOGADO para `itmt_app`, inclusive o
+  default ACL, então liberar é ato deliberado por tabela. A absorção
+  incremental (E1–E21) continua valendo para o que a API realmente consome.
+  O laboratório `itmt_dw_homolog` segue existindo para validação física — os pacotes chegam com **zero GRANT/RLS/particionamento** e
   já reincidiram 5× na classe de defeito "seed silencioso" (`INSERT ... SELECT` de
   fonte vazia que não insere nada e não dá erro). Ao receber um pacote novo: rito
   de bateria de segurança → aplicar no lab com `ON_ERROR_STOP` → conferir os seeds
@@ -214,6 +220,10 @@ Aplica helmet/CORS/rate-limit.
 
 ## Ambiente e convenções desta máquina
 
+- **PostGIS é requisito desde a db/68** — sem a extensão a migração PARA com
+  mensagem explícita, e a suíte inteira não roda. No dev local, instale pelo
+  Stack Builder do PostgreSQL 18 (Spatial Extensions); no CI a imagem já é
+  `postgis/postgis`.
 - **PostgreSQL 18 nativo (sem Docker no dev local).** Papéis dev: `itmt/itmt`
   (dono, superuser) e `itmt_app/itmt_app` (app). O banco dev é `itmt` e **tem dados
   reais** (142 municípios, ~12 mil observações) — não rode a suíte contra ele. Os
