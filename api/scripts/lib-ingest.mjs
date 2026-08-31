@@ -89,7 +89,7 @@ export async function carregarConfigIngestao(db, caminhoConfig) {
     if (textoArquivo !== null) {
       try {
         const h = await db.query(
-          `SELECT encode(sha256(($1::jsonb)::text::bytea),'hex') AS hash`,
+          `SELECT encode(sha256(convert_to(($1::jsonb)::text,'UTF8')),'hex') AS hash`,
           [textoArquivo],
         );
         if (h.rows[0].hash !== linha.hash) {

@@ -68,7 +68,7 @@ test('db/62 catraca anti-drift: as 12 configs vigentes batem por hash canônico 
   for (const f of arquivos) {
     const texto = readFileSync(join(DIR_CONFIGS, f), 'utf8');
     const { rows: [{ hash }] } = await owner.query(
-      `SELECT encode(sha256(($1::jsonb)::text::bytea),'hex') AS hash`, [texto],
+      `SELECT encode(sha256(convert_to(($1::jsonb)::text,'UTF8')),'hex') AS hash`, [texto],
     );
     const linha = banco.rows.find((r) => r.slug === f.replace(/\.json$/, ''));
     assert.equal(
@@ -194,4 +194,48 @@ test('db/62 curadoria: mapeamento config→conector é o documentado (grão fino
            "FonteConectorConfiguracao_ConectorSlug" AS conector
       FROM ${T} WHERE "FonteConectorConfiguracao_Vigente" ORDER BY 1`);
   assert.deepEqual(Object.fromEntries(r.rows.map((x) => [x.slug, x.conector])), esperado);
+});
+
+/**
+ * db/65 — regressão do hash canônico.
+ *
+ * O trigger do db/62 calculava o hash com `(...)::text::bytea`. Esse cast não
+ * converte texto em bytes UTF-8: ele lê o texto no formato de ENTRADA de
+ * bytea, onde a barra invertida escapa. Resultado: qualquer configuração cujo
+ * jsonb contivesse uma aspa escapada dentro de uma string fazia o INSERT
+ * levantar erro e a versão nem entrava no catálogo. É o mesmo defeito que o
+ * AuditoriaService já documentava e que o db/63 curou no lib-ingest.
+ */
+test('db/65: configuração com barra invertida entra no catálogo e o hash bate', async () => {
+  const conteudo = {
+    fonte: { nome: 'Fonte "X" — TabNet', origem: 'teste\db65' },
+    observacao: 'linha1\nlinha2',
+  };
+  const texto = JSON.stringify(conteudo);
+
+  await owner.query(
+    `INSERT INTO ${T}("FonteConectorConfiguracao_Slug","FonteConectorConfiguracao_Versao",
+                      "FonteConectorConfiguracao_Conteudo","FonteConectorConfiguracao_Vigente")
+     VALUES ('db65-barra-invertida', 1, $1::jsonb, false)`,
+    [texto],
+  );
+
+  const r = await owner.query(
+    `SELECT "FonteConectorConfiguracao_HashSha256" AS gravado,
+            encode(sha256(convert_to(("FonteConectorConfiguracao_Conteudo")::text,'UTF8')),'hex') AS canonico
+       FROM ${T} WHERE "FonteConectorConfiguracao_Slug" = 'db65-barra-invertida'`);
+
+  assert.equal(r.rows.length, 1, 'a configuração com barra invertida tem que ser aceita');
+  assert.equal(r.rows[0].gravado, r.rows[0].canonico,
+    'o hash gravado pelo trigger tem que ser o sha256 dos bytes UTF-8 do conteúdo');
+
+  // Contrafactual: o cast antigo continua falhando — sem isto o teste não prova nada.
+  await assert.rejects(
+    owner.query(`SELECT sha256(($1::jsonb)::text::bytea)`, [texto]),
+    /bytea/i,
+    'o cast antigo precisa continuar rejeitando barra invertida');
+
+  // Sem limpeza: o histórico é imutável por trigger (db/62) e DELETE é vetado.
+  // A linha fica como versão NÃO vigente, invisível às demais asserções — e a
+  // tentativa de removê-la foi, ela própria, uma prova do veto funcionando.
 });

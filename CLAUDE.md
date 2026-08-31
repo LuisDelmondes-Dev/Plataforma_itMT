@@ -9,7 +9,7 @@ programa público estruturado em fases **F0–F7**, não um app CRUD. Quatro par
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16+ / pgvector | 64 migrações SQL escritas à mão, **sem ORM** |
+| `db/` | PostgreSQL 16+ / pgvector | 65 migrações SQL escritas à mão, **sem ORM** |
 | `api/` | NestJS 11 + driver `pg` cru | o **motor determinístico** |
 | `web/` | Next.js 16 / React 19 (App Router) | portal público, 23 páginas |
 | `coletores/` | Python | raspagem de fontes sem API (CNES/TabNet, INEP) |
@@ -119,7 +119,7 @@ todas as migrações, roda as 41 suítes e termina verificando a cadeia. Aponte
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 276 testes, ~2,5 min
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 277 testes, ~2,5 min
 ```
 
 O runner recusa qualquer alvo cujo nome não termine em `_test`/`_teste`, e força
@@ -237,7 +237,7 @@ propósito** (mais rigoroso).
 
 ## Onde o programa realmente está
 
-Software local: **verde** — 64 migrações aplicam do zero, 276/276 testes, cadeia
+Software local: **verde** — 65 migrações aplicam do zero, 277/277 testes, cadeia
 íntegra, builds de API e web limpos, zero vulnerabilidades de produção no `npm audit`.
 
 **Atenção ao entrar (situação de 31/08/2026):** as migrações **48–64 e todo o
