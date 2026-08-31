@@ -9,7 +9,7 @@ programa público estruturado em fases **F0–F7**, não um app CRUD. Quatro par
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16+ / pgvector | 47 migrações SQL escritas à mão, **sem ORM** |
+| `db/` | PostgreSQL 16+ / pgvector | 65 migrações SQL escritas à mão, **sem ORM** |
 | `api/` | NestJS 11 + driver `pg` cru | o **motor determinístico** |
 | `web/` | Next.js 16 / React 19 (App Router) | portal público, 23 páginas |
 | `coletores/` | Python | raspagem de fontes sem API (CNES/TabNet, INEP) |
@@ -54,6 +54,22 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
   dentro de `withTenantTransaction` (`SET LOCAL` + RLS `FORCE`); sem contexto, a
   leitura retorna zero e a escrita é negada. Tenant/organização vindos de header
   livre nunca podem chegar ao banco — só contexto já autenticado por membership.
+- **Modelo externo se absorve, nunca substitui (ADR-010).** O usuário traz, de
+  tempos em tempos, pacotes de arquitetura gerados por outra IA (Fases 1–5, Core
+  R2/R2.1/R2.2/R2.3.x — ~1.299 tabelas, snake_case, 11 schemas). A decisão vigente e
+  aprovada: **a base da casa permanece o núcleo governado**; as ideias boas entram
+  uma a uma por migração nova, adaptadas à convenção `"Tabela_Atributo"`, **cada
+  uma com consumidor real no código e teste no ratchet**. Nunca copie DDL externo,
+  nunca crie tabela sem quem a consuma (E7–E14/E16 estão na fila do ADR justamente
+  por isso). O modelo externo é instalado só no laboratório `itmt_dw_homolog`
+  (Postgres 18 local, sem PostGIS: colunas `geometry` viram stub `text`) — e,
+  quando o pacote trouxer harness próprio, num contêiner PG17+PostGIS, que foi
+  como o gate geoespacial fechou em 31/08 (226 colunas, todas SRID 4674), para
+  validação física — os pacotes chegam com **zero GRANT/RLS/particionamento** e
+  já reincidiram 5× na classe de defeito "seed silencioso" (`INSERT ... SELECT` de
+  fonte vazia que não insere nada e não dá erro). Ao receber um pacote novo: rito
+  de bateria de segurança → aplicar no lab com `ON_ERROR_STOP` → conferir os seeds
+  alegados por contagem → decidir a absorção no ADR-010.
 
 ## Banco de dados — como funciona (sem ORM)
 
@@ -98,12 +114,12 @@ npm run verificar-cadeia   # recomputa a cadeia SHA-256; exit 1 se quebrada
 ### Testes (suíte e2e — `node --test`)
 
 `scripts/test-e2e.mjs` **cria e derruba sozinho** um banco descartável, aplica
-todas as migrações, roda as 29 suítes e termina verificando a cadeia. Aponte
+todas as migrações, roda as 41 suítes e termina verificando a cadeia. Aponte
 `DATABASE_URL` para o banco **administrativo** (`postgres`), não para o dev:
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 154 testes, ~2,5 min
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 277 testes, ~2,5 min
 ```
 
 O runner recusa qualquer alvo cujo nome não termine em `_test`/`_teste`, e força
@@ -148,7 +164,14 @@ Cada pasta em `api/src/` é um módulo Nest. `DatabaseModule`, `AuthModule` e
   recomputa Σnum/Σden, `MEDIA_PONDERADA` pesa por população, `NAO_AGREGAVEL`→422) e
   anexa o quinteto de procedência (`common/procedencia.ts`) a todo valor. Também
   série histórica, projeção/cenários (`projecao.service.ts`), mapa e exportação
-  CSV/XLSX/PDF.
+  CSV/XLSX/PDF. Também `ranking()` (ranking de competição com delta vs. média) e
+  `causas()` (decomposição por dimensão do catálogo `DimensaoObservacao`);
+  indicador `RECALCULO` pareia numerador/denominador pelo helper único
+  `paresRecalculo`, compartilhado por ranking, mapa e exportação — se você tocar
+  um, confira os três.
+- **`pesquisas`** — toda consulta executada é gravada normalizada
+  (`Pesquisa*`, db/48) e reabrível por id, com SHA-256 canônico que denuncia se o
+  conteúdo divergiu. Tabelas imutáveis: INSERT sem UPDATE/DELETE.
 
 **IA e agentes**
 - **`xingu`** — `orquestrador.service.ts` é a máquina de estados (RG-01);
@@ -214,8 +237,16 @@ propósito** (mais rigoroso).
 
 ## Onde o programa realmente está
 
-Software local: **verde** — 47 migrações aplicam do zero, 154/154 testes, cadeia
+Software local: **verde** — 65 migrações aplicam do zero, 277/277 testes, cadeia
 íntegra, builds de API e web limpos, zero vulnerabilidades de produção no `npm audit`.
+
+**Atenção ao entrar (situação de 31/08/2026):** as migrações **48–64 e todo o
+código que as consome ainda NÃO estão commitados** — vivem só na cópia de
+trabalho (39 arquivos novos, 30 alterados). E o **banco dev `itmt` está na 47**:
+antes de rodar a API contra ele, aplique as pendentes (`npm run migrar`), senão
+o motor procura colunas que lá ainda não existem. Duas frentes esperam ato
+humano: o parecer RG-09 de 4 indicadores `EM_ANALISE` (óbitos infantis, nascidos
+vivos, TMI, despesas empenhadas) e a revisão/commit da árvore.
 
 O que trava as fases **não é código**: são atos que o repositório não pode simular —
 nuvem soberana/IdP/WAF/KMS contratados, campanhas de campo com equipe e autorização,

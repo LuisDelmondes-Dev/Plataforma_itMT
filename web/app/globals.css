@@ -677,6 +677,8 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .regua-resumo { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .regua-entenda { min-height:24px; padding:0 4px; border:0; background:transparent; color:var(--primary); font:inherit; font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
 .regua-detalhe { display:grid; gap:8px; margin-top:8px; padding:12px 14px; font-size:13px; line-height:20px; color:var(--on-surface-variant); background:var(--surface-container-low); border-left:3px solid var(--primary); border-radius:0 var(--radius-sm) var(--radius-sm) 0; }
+/* E3: selo de fase de homologação — só aparece quando a fonte declara PRELIMINAR */
+.selo-preliminar { display:inline-block; padding:1px 8px; border:1px dashed var(--outline); border-radius:var(--radius-full); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--on-surface-variant); white-space:nowrap; }
 .regua-detalhe p { margin:0; }
 .regua-fonte-extra { padding-top:8px; border-top:1px dashed var(--outline-variant); }
 
@@ -828,4 +830,51 @@ table.dados td.num { font-variant-numeric:tabular-nums; text-align:right; }
 .home-painel-acoes { display:grid; gap:8px; margin-top:10px; }
 .home-painel-acoes .btn { text-decoration:none; text-align:center; color:var(--ink); }
 .home-painel-acoes .btn.primaria { color:var(--on-primary); }
-@media (max-width: 720px) { .home-resultados { grid-template-columns:1fr; } .home-painel-municipio { width:100%; } }
+/* minmax(0,1fr), não 1fr: 1fr = minmax(auto,1fr) e o min-content da tabela
+   do dashboard vazava 16px além do viewport móvel (crítico P5/rodada 3). */
+@media (max-width: 720px) { .home-resultados { grid-template-columns:minmax(0,1fr); } .home-painel-municipio { width:100%; } }
+
+/* Dossiê Xingú (Gauntlet P6) */
+.dossie-xingu { display:grid; gap:16px; margin:8px 0 24px; }
+/* P6 rodada 3: TODO item do grid solta o min-content (não só o overline) —
+   a tabela do ranking tem min-content de ~396px e, sem isto, esticava todos
+   os cards além dos 375px do celular (35px de rolagem horizontal medidos). */
+.dossie-xingu > * { min-width:0; }
+/* P6 rodada 2: em 375px o overline "Dossiê do gestor · <indicador> [ano]"
+   não quebrava e alargava a página (rolagem horizontal). min-width:0 libera
+   o item de grid do min-content; overflow-wrap quebra onde precisar. */
+.dossie-xingu .overline { min-width:0; overflow-wrap:anywhere; }
+/* Barras de participação da decomposição por causa ("onde dói"). */
+.dossie-causa { display:grid; gap:6px; margin-top:14px; }
+.dossie-causa-cab { display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.dossie-causa-linha { display:grid; grid-template-columns:minmax(90px, 200px) minmax(0, 1fr) auto; align-items:center; gap:8px; font-size:12px; }
+.dossie-causa-rotulo { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--on-surface-variant); }
+.dossie-causa-trilho { display:block; height:12px; min-width:0; background:var(--surface-container-high); border-radius:2px; }
+.dossie-causa-barra { display:block; height:12px; border-radius:2px; background:var(--mapa-3); transition:width var(--motion-standard) var(--ease); }
+.dossie-causa-linha.dominante .dossie-causa-rotulo { color:var(--on-surface); font-weight:600; }
+.dossie-causa-linha.dominante .dossie-causa-barra { background:var(--dado-observado); }
+.dossie-causa-valor { font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--on-surface); }
+/* Ranking completo: rolagem VERTICAL interna (o th sticky do .tabela-rolagem
+   continua funcionando porque o scroll é do próprio contêiner). */
+.dossie-ranking .tabela-rolagem { max-height:420px; overflow-y:auto; overflow-x:auto; }
+/* Mini ranking "maiores/menores valores" (duas pontas, sem julgamento). */
+.dossie-minirank { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:12px; }
+.dossie-minirank-lista { list-style:none; margin:6px 0 0; padding:0; display:grid; gap:4px; font-size:13px; }
+.dossie-minirank-lista li.destaque { font-weight:600; }
+/* Legenda estática do mapa compacto. */
+.dossie-mapa-legenda { display:flex; gap:10px 12px; flex-wrap:wrap; align-items:center; margin-top:10px; font-size:12px; color:var(--on-surface-variant); }
+.dossie-mapa-classe { display:inline-flex; align-items:center; gap:6px; }
+.dossie-mapa-cor { width:14px; height:14px; border-radius:3px; display:inline-block; }
+/* Cards de sugestão (dossiê, não decisão · RG-09). */
+.dossie-sugestoes { display:grid; gap:12px; margin-top:12px; }
+.dossie-sugestao { padding:12px 14px; background:var(--surface-container-low); border:1px solid var(--border); border-left:3px solid var(--secondary); border-radius:0 var(--radius-sm) var(--radius-sm) 0; }
+.dossie-sugestao p { margin:0 0 8px; font-size:14px; line-height:21px; }
+.dossie-sugestao-meta { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; font-size:12px; color:var(--on-surface-variant); }
+.dossie-sugestao-meta a { color:var(--primary); text-decoration:underline; text-underline-offset:2px; }
+/* Rodapé do dossiê: exportações + rastro da pesquisa persistida. */
+.dossie-rodape { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:space-between; font-size:12px; color:var(--on-surface-variant); }
+.dossie-rodape a { color:var(--primary); }
+@media (max-width: 560px) {
+  .dossie-causa-linha { grid-template-columns:minmax(0, 1fr) auto; }
+  .dossie-causa-rotulo { grid-column:1 / -1; }
+}

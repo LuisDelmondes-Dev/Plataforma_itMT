@@ -1,0 +1,15 @@
+{
+  "fonte": {
+    "nome": "SIM/DATASUS — Óbitos infantis (TabNet, inf10mt)",
+    "origem": "Ministério da Saúde — SVSA/CGIAE — Sistema de Informações sobre Mortalidade (SIM)",
+    "url": "http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sim/cnv/inf10mt.def",
+    "baseLegal": "DADO_ABERTO",
+    "licenca": "Informações de Saúde — DATASUS (Lei 12.527/2011)",
+    "periodicidade": "ANUAL"
+  },
+  "indicador": { "nome": "Óbitos infantis", "unidade": "óbitos", "tipoAgregacao": "SOMA", "subtemaNome": "Mortalidade infantil" },
+  "colunas": { "codigoIbge": "codigo_ibge", "valor": "valor" },
+  "dataReferencia": "2024-12-31",
+  "separador": ";",
+  "agregarPorMunicipio": true
+}

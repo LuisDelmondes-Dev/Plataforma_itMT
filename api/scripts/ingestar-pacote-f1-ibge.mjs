@@ -3,6 +3,7 @@
 import {
   auditar, baixar, pool, promoverObservacoes, quarentenar, registrarCarga,
   registrarFonte, salvarBronze, sha256, verificarEsquema,
+  carregarRegrasValor, classificarValor,
 } from './lib-ingest.mjs';
 
 const DATASETS = [
@@ -90,18 +91,36 @@ function seriesDaVariavel(corpo, variavelId) {
   return (item?.resultados ?? []).flatMap((r) => r.series ?? []);
 }
 
-function normalizar(series, periodo) {
+// E20 (db/64): este conector já acertava o '-' do SIDRA ("zero absoluto") —
+// era o ÚNICO dos quatro que acertava, e por isso a contradição só aparecia
+// comparando conectores. A leitura da célula agora vem do classificador
+// central (mesmo catálogo, mesma resposta para todos), e este conector
+// continua acertando: o '-' segue virando 0, agora pela via única.
+function normalizar(series, periodo, regrasValor) {
   const validas = [];
   const invalidas = [];
   for (const s of series) {
     const codigo = String(s?.localidade?.id ?? '');
-    const bruto = s?.serie?.[periodo];
-    // Na simbologia SIDRA, '-' significa zero absoluto. '...' é ausência/supressão.
-    const valor = bruto === '-' ? 0 : Number(String(bruto).replace(',', '.'));
-    if (!/^51\d{5}$/.test(codigo) || !Number.isFinite(valor) || valor < 0 || bruto === '...') {
-      invalidas.push({ registro: s, motivo: `valor ausente/inválido em ${codigo || 'sem código'}: ${bruto}` });
+    const celula = classificarValor(s?.serie?.[periodo], regrasValor);
+    if (!/^51\d{5}$/.test(codigo)) {
+      invalidas.push({
+        registro: s, motivo: `código de município ausente ou fora de MT: ${codigo || 'sem código'}`,
+        codigoRazao: /^\d{7}$/.test(codigo) ? 'TERRITORIO_FORA_DE_ESCOPO' : 'TERRITORIO_INVALIDO',
+        simbolo: codigo,
+      });
+    } else if (!celula.promovivel) {
+      invalidas.push({
+        registro: s, motivo: `valor não promovível (${celula.status}) em ${codigo}: ${celula.simbolo}`,
+        codigoRazao: celula.codigoRazao, simbolo: celula.simbolo,
+      });
+    } else if (celula.valor < 0) {
+      // Plausibilidade do indicador; zero (inclusive ZERO_ABSOLUTO) é válido.
+      invalidas.push({
+        registro: s, motivo: `valor negativo implausível em ${codigo}: ${celula.simbolo}`,
+        codigoRazao: 'VALOR_IMPLAUSIVEL', simbolo: celula.simbolo,
+      });
     } else {
-      validas.push({ codigo, valor });
+      validas.push({ codigo, valor: celula.valor });
     }
   }
   return { validas, invalidas };
@@ -115,6 +134,9 @@ try {
   );
   const pilotos = new Set(pilotosR.rows.map((r) => r.codigo));
   if (pilotos.size !== 10) throw new Error(`Catálogo F1 inválido: esperados 10 municípios piloto, encontrados ${pilotos.size}.`);
+
+  // Todos os datasets deste pacote vêm da API de agregados do IBGE: SIDRA.
+  const regrasValor = await carregarRegrasValor(db, { convencao: 'SIDRA' });
 
   for (const d of selecionados) {
     try {
@@ -154,8 +176,11 @@ try {
              FROM "Indicador" WHERE "Indicador_Nome" = $1`, [v.indicador],
         );
         if (!indicadorR.rows[0]) throw new Error(`Indicador do pacote não cadastrado: ${v.indicador}. Aplique a migração 19.`);
-        const { validas, invalidas } = normalizar(seriesDaVariavel(corpo, v.id), d.periodo);
-        for (const q of invalidas) await quarentenar(db, cargaId, q.registro, q.motivo);
+        const { validas, invalidas } = normalizar(seriesDaVariavel(corpo, v.id), d.periodo, regrasValor);
+        for (const q of invalidas) {
+          await quarentenar(db, cargaId, q.registro, q.motivo,
+            { codigoRazao: q.codigoRazao, simbolo: q.simbolo });
+        }
 
         const presentes = new Set(validas.map((l) => l.codigo));
         const pilotosPresentes = [...pilotos].filter((codigo) => presentes.has(codigo));
@@ -163,6 +188,10 @@ try {
         const coberturaPct = pilotosPresentes.length * 10;
         const qualidadeOk = coberturaPct === 100 && invalidas.length < totalLinhas;
 
+        // E18 (db/63): promoverObservacoes confirma a carga
+        // (CANDIDATA⇒PROMOVIDA) no MESMO comando do Ouro. Uma carga do
+        // pacote alimenta várias variáveis: a primeira que gravar
+        // observação confirma; se nenhuma gravar, a carga fica CANDIDATA.
         const promovida = await promoverObservacoes(db, {
           indicadorId: indicadorR.rows[0].id, fonteId, cargaId,
           dataReferencia: d.ref, linhas: validas,

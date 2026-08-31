@@ -462,6 +462,7 @@ Resultado de baixa confiança → fila de revisão → revisor humano aprova/cor
 - **RN13 — Versionamento:** todo dataset e relatório tem versão e data; alterações são auditáveis.
 - **RN14 — Auditoria:** toda execução de agente e geração de resposta é registrada (quem, quando, qual modelo, quais fontes, custo).
 - **RN15 — Revisão humana:** dados sensíveis ou de baixa confiança passam por revisão antes de publicação.
+- **RN16 — Dois modos de resposta:** toda pergunta territorial aceita dois contratos de saída — **Pesquisa** (resposta rápida e completa sem excesso: valor do recorte, destaque top-5, tabela completa sob demanda) e **IA Xingú** (dossiê de gestão: ranking completo ordenado, série histórica, decomposição por causa/período quando a fonte cobre, comparação territorial e sugestões fundamentadas em práticas reconhecidas, cada uma com FK para o dado que a motivou). Os dois modos partilham o mesmo motor determinístico e as mesmas invariantes (RN11 — ausência declarada; RF008 — fonte e data; número nunca do LLM); a diferença é o contrato de resposta, nunca o rigor. Sugestão é **subsídio, não decisão** (coerente com RN15): cita prática de gestão pública com norma vigente e o dado-origem, sem decidir pelo gestor.
 
 ---
 
@@ -493,6 +494,7 @@ Formato: Código · Descrição · Prioridade · Dependência · Critério de ac
 | RF020 | O sistema deve disponibilizar banco de imagens/vídeos (MT Imagens). | Baixa | — | Acervo navegável com contribuição de usuários. |
 | RF021 | O sistema deve oferecer app de coleta domiciliar para agentes de saúde. | Baixa | RF013 | Questionário aplicado e sincronizado (offline). |
 | RF022 | O sistema deve gerenciar planos e limites de uso (billing). | Baixa | RF012 | Limites por plano aplicados. |
+| RF023 | O sistema deve responder qualquer pergunta territorial em dois modos — `pesquisa` (resposta simples e completa com top-5) e `xingu` (dossiê de gestão com ranking completo, série, causas, comparação e sugestões com dado-origem) — selecionáveis na UI e via API (`modo=pesquisa\|xingu`), persistindo toda execução de forma normalizada e reabrível sem reexecutar motor/LLM (RN16). | Alta | RF003, RF008 | Mesma pergunta nos dois modos gera os dois contratos; pesquisa gravada e reaberta idêntica do banco (hash verificado); sugestão sem dado-origem é impossível por constraint. |
 
 ---
 

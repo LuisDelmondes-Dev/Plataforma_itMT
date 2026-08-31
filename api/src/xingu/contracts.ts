@@ -44,3 +44,24 @@ export const CONTRATO_A06_AUDITOR: ContratoAgente = Object.freeze({
   timeoutMs: 2_000, retry: { maxAttempts: 1, backoffMs: 0 },
   avaliacao: ['zero-numeral-intruso', 'fail-closed'],
 });
+
+/**
+ * A16 — Agente de Sugestões (Gauntlet P7). Dossiê, não decisão (RG-09):
+ * entrada = SOMENTE o JSON do motor + catálogo curado "PraticaGestao"
+ * (db/51); saída = sugestões por template determinístico, cada uma com
+ * prática reconhecida citada e origem por FK no dado que a motivou. SEM LLM
+ * nesta versão (RG-05: a conta está sem créditos e o caminho determinístico
+ * é o primário) — re-redação por LLM é enriquecimento futuro que, quando
+ * existir, será auditado pelo A06 e exigirá 'A16' no CHECK de
+ * "ConsumoLlm_Borda". Sem retry (função pura: reexecutar não muda nada) e
+ * timeout curto (não há I/O além do catálogo em cache).
+ */
+export const CONTRATO_A16_SUGESTOES: ContratoAgente = Object.freeze({
+  id: 'a16-sugestoes', versao: '1.0.0',
+  proposito: 'Montar dossiê de sugestões determinístico: prática reconhecida + FK do dado do motor; subsídio, nunca decisão.',
+  input: { required: ['dossie', 'indicador', 'recorte'], maxBytes: 524_288 },
+  output: { required: ['sugestoes', 'descartadas'], maxBytes: 65_536 },
+  ferramentas: ['catalogo-praticas:ler'], permissoes: ['dados-publicos:ler'],
+  timeoutMs: 3_000, retry: { maxAttempts: 1, backoffMs: 0 },
+  avaliacao: ['schema', 'numerais-lastreados', 'origem-por-fk', 'deterministico', 'sem-llm'],
+});

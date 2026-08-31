@@ -34,6 +34,37 @@ const SUITES_PADRAO = [
   'test/sentinela-redteam.unit.mjs',
   'test/bordas-decisao.unit.mjs',
   'test/migracoes.unit.mjs',
+  // Evolução E4 (ADR-010 — malha completa dos 142 municípios, db/57).
+  // ANTES de ranking.unit.mjs de propósito: os municípios sintéticos
+  // 5199xxx daquela suíte ainda não existem e a contagem de 142 é pura.
+  'test/malha.unit.mjs',
+  // Gauntlet "Pesquisa vs IA Xingú" (docs/gauntlet/PLANO.md) — ratchet:
+  'test/pesquisas.unit.mjs',
+  'test/ranking.unit.mjs',
+  'test/modo.e2e.mjs',
+  'test/causas.unit.mjs',
+  'test/sugestoes.unit.mjs',
+  'test/siconfi.unit.mjs',
+  // Evolução da base (ADR-010):
+  'test/dimensoes.unit.mjs',
+  // Evolução E6 (db/61 — golden set persistido: upsert idempotente,
+  // aposentadoria sem DELETE, histórico de avaliações append-only).
+  'test/golden.unit.mjs',
+  // Evolução E17 (db/62 — configuração de ingestão versionada: catraca
+  // anti-drift arquivo×banco, vigência única, imutabilidade por trigger,
+  // fallback RG-05-like do carregarConfigIngestao).
+  'test/config-ingestao.unit.mjs',
+  // Evoluções E18/E19 (db/63 — checkpoint em duas fases na carga e
+  // quarentena idempotente). Cria fontes/cargas sintéticas próprias; roda
+  // antes de status-dado.unit.mjs, que mexe no catálogo de indicadores.
+  'test/carga-candidata.unit.mjs',
+  // Evolução E20 (db/64 — status do VALOR como domínio curado). Vizinha da
+  // E18/E19 porque compartilha a doutrina de carga/quarentena; cria fonte e
+  // cargas sintéticas próprias e as desfaz.
+  'test/status-valor.unit.mjs',
+  // Evolução E3 (db/60 — status do dado no quinteto de procedência). Por
+  // último de propósito: cria/remove um indicador sintético aprovado.
+  'test/status-dado.unit.mjs',
 ];
 const ARQUIVOS_TESTE = process.env.TEST_FILES
   ? process.env.TEST_FILES.split(',').map((x) => x.trim()).filter(Boolean)

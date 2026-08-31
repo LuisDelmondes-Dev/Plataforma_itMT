@@ -7,6 +7,8 @@ import { DatabaseService, PLATFORM_PUBLIC_CONTEXT } from '../database/database.s
 interface PerguntaDto {
   pergunta: string;
   contexto?: { indicador_id?: number; codigo_ibge?: string };
+  /** RN-MODO (P4): ausente = 'pesquisa' (retrocompatibilidade). */
+  modo?: 'pesquisa' | 'xingu';
 }
 
 @Controller('xingu')
@@ -85,10 +87,16 @@ export class XinguController {
     if (!dto?.pergunta || typeof dto.pergunta !== 'string' || dto.pergunta.length > 1000) {
       throw new BadRequestException('Envie { pergunta: string } com até 1000 caracteres.');
     }
+    // RN-MODO (P4): validação manual no padrão da casa; valor fora do
+    // domínio é 400 (nunca coagido em silêncio para um dos modos).
+    if (dto.modo !== undefined && dto.modo !== 'pesquisa' && dto.modo !== 'xingu') {
+      throw new BadRequestException("modo, quando presente, deve ser 'pesquisa' ou 'xingu'.");
+    }
     return this.db.withTenantTransaction(PLATFORM_PUBLIC_CONTEXT, () => this.orquestrador.perguntar(
       dto.pergunta,
       dto.contexto,
       sabotar === '1', // gancho de teste do veto A06 — no-op fora de NODE_ENV=test (gancho-teste.ts)
+      dto.modo ?? 'pesquisa',
     ));
   }
 }

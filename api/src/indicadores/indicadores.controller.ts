@@ -150,6 +150,64 @@ export class IndicadoresController {
     return this.svc.mapa({ indicadorId: id, referencia: referencia ?? null });
   }
 
+  /**
+   * GET /v1/indicadores/:id/ranking?referencia=AAAA-MM-DD&n=5
+   * Ranking completo dos municípios (Gauntlet P2): posição (competition
+   * ranking), top-N/bottom-N, delta vs média estadual do motor e
+   * procedência por linha. RN-005: município sem dado vai para `ausentes`,
+   * nunca aparece como zero.
+   */
+  @Get('indicadores/:id/ranking')
+  ranking(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('referencia') referencia?: string,
+    @Query('n') n?: string,
+  ) {
+    if (referencia && !/^\d{4}-\d{2}-\d{2}$/.test(referencia))
+      throw new BadRequestException('referencia deve ser AAAA-MM-DD');
+    let topN: number | undefined;
+    if (n !== undefined && n !== '') {
+      const valor = Number(n);
+      if (!Number.isInteger(valor) || valor < 1 || valor > 142)
+        throw new BadRequestException('n deve ser um inteiro entre 1 e 142');
+      topN = valor;
+    }
+    return this.svc.ranking({ indicadorId: id, referencia: referencia ?? null, n: topN });
+  }
+
+  /**
+   * GET /v1/indicadores/:id/causas?codigo=5103403&referencia=AAAA-MM-DD&dimensao=CAPITULO_CID10
+   * Decomposição por causa/categoria (Gauntlet P3): valores absolutos +
+   * participação % por dimensão (capítulo CID-10, causa evitável 0–4 anos,
+   * componente etário), no município (codigo) ou no estado (sem codigo).
+   * RN-005: sem dado, 404 com as dimensões que existem — nunca zero.
+   */
+  @Get('indicadores/:id/causas')
+  causas(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('codigo') codigo?: string,
+    @Query('referencia') referencia?: string,
+    @Query('dimensao') dimensao?: string,
+  ) {
+    if (codigo !== undefined && codigo !== '' && !/^\d{7}$/.test(codigo))
+      throw new BadRequestException('codigo deve ser o código IBGE de 7 dígitos do município');
+    if (referencia && !/^\d{4}-\d{2}-\d{2}$/.test(referencia))
+      throw new BadRequestException('referencia deve ser AAAA-MM-DD');
+    // Evolução E1 (db/54): o controller NÃO conhece mais o vocabulário de
+    // dimensões — só normaliza a caixa e delega; o service valida em runtime
+    // contra o catálogo "DimensaoObservacao" e responde 400 honesto listando
+    // os códigos vigentes. Decisão documentada: validar no service (e não
+    // consultar o catálogo daqui) mantém UM ponto de verdade também para
+    // quem chama o motor sem HTTP (orquestrador, exportação, testes).
+    const dim = dimensao ? dimensao.toUpperCase() : null;
+    return this.svc.causas({
+      indicadorId: id,
+      codigo: codigo || null,
+      referencia: referencia ?? null,
+      dimensao: dim,
+    });
+  }
+
   /** GET /v1/indicadores/destaque?limite=4 — indicadores com dado para a ficha (RF-PORTAL-011) */
   @Get('indicadores/destaque')
   destaque(@Query('limite') limite?: string, @Query('detalhe') detalhe?: string) {

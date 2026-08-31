@@ -20,10 +20,10 @@
 //   "agregarPorMunicipio": true      // soma linhas repetidas do mesmo município
 // }
 // ============================================================
-import { readFileSync } from 'node:fs';
 import {
   pool, registrarFonte, lerBronze, registrarCarga, auditar,
-  verificarEsquema, quarentenar,
+  verificarEsquema, quarentenar, carregarConfigIngestao, confirmarCarga,
+  carregarRegrasValor, classificarValor,
 } from './lib-ingest.mjs';
 
 const [, , configPath, csvPath] = process.argv;
@@ -55,10 +55,20 @@ function parseCsv(texto, sep) {
   return linhas;
 }
 
-const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
 const db = pool();
 
 try {
+  // E17 (db/62): a config vem do BANCO (versão vigente pelo slug); o arquivo
+  // é fallback (banco pré-db/62 ou slug fora do catálogo). Divergência entre
+  // os dois gera warn dentro do loader e o banco vence.
+  const { config: cfg, origem: cfgOrigem, versao: cfgVersao, slug: cfgSlug, conectorSlug } =
+    await carregarConfigIngestao(db, configPath);
+  console.log(
+    cfgOrigem === 'banco'
+      ? `✓ Config: banco — "FonteConectorConfiguracao" slug ${cfgSlug} v${cfgVersao} (E17, db/62)`
+      : `✓ Config: arquivo ${configPath} (fallback — slug "${cfgSlug}" fora do catálogo db/62)`,
+  );
+
   // RG-06: a base legal vem do config e é validada — sem ela, aborta
   const fonteId = await registrarFonte(db, cfg.fonte);
 
@@ -93,22 +103,51 @@ try {
     fonte: cfg.fonte.nome, hash, linhas: tabela.length - 1,
   });
 
-  // Prata: normalizar, quarentenar inválidos, opcionalmente agregar por município
+  // E20 (db/64): a convenção de símbolos vem do catálogo, pelo conector dono
+  // desta config. Sem convenção curada (cnes, inep e as demais fontes cuja
+  // legenda ainda não foi documentada) o classificador cai no default seguro:
+  // só número puro vira valor, símbolo nenhum vira zero.
+  const regrasValor = await carregarRegrasValor(db, { conectorSlug });
+  console.log(
+    regrasValor
+      ? `✓ Convenção de valor: ${regrasValor.convencao} (${regrasValor.origem}, db/64)`
+      : `ℹ Convenção de valor: nenhuma curada para "${conectorSlug ?? 'conector desconhecido'}" — `
+        + 'default seguro (célula não numérica vai para a quarentena, jamais vira zero).',
+  );
+
+  // Prata: classificar, quarentenar o que não é promovível, opcionalmente
+  // agregar por município.
   const porMunicipio = new Map();
   let quarentenadas = 0;
   for (const l of tabela.slice(1)) {
     const brutoIbge = String(l[idxIbge] ?? '').trim();
     // CNES e outras bases usam código de 6 dígitos (sem DV) — normalizamos
     const codigo6 = brutoIbge.slice(0, 6);
-    const valor = Number(String(l[idxValor] ?? '').replace(',', '.'));
-    if (!/^\d{6,7}$/.test(brutoIbge) || !codigo6.startsWith('51') || !Number.isFinite(valor)) {
-      await quarentenar(db, cargaId, Object.fromEntries(cab.map((c, i) => [c, l[i]])),
-        `codigo_ibge ou valor inválido: "${brutoIbge}" / "${l[idxValor]}"`);
+    const registro = Object.fromEntries(cab.map((c, i) => [c, l[i]]));
+    const celula = classificarValor(l[idxValor], regrasValor);
+
+    // Território primeiro: o código manda na linha inteira — se o município
+    // não é daqui, o valor sequer chega a ser avaliado.
+    if (!/^\d{6,7}$/.test(brutoIbge) || !codigo6.startsWith('51')) {
+      await quarentenar(db, cargaId, registro,
+        `codigo_ibge inválido ou fora de MT: "${brutoIbge}"`,
+        {
+          codigoRazao: /^\d{6,7}$/.test(brutoIbge) ? 'TERRITORIO_FORA_DE_ESCOPO' : 'TERRITORIO_INVALIDO',
+          simbolo: brutoIbge,
+        });
+      quarentenadas++;
+      continue;
+    }
+    // E20: só status PROMOVÍVEL vira observação. O resto NÃO vira zero.
+    if (!celula.promovivel) {
+      await quarentenar(db, cargaId, registro,
+        `valor não promovível (${celula.status}) em ${brutoIbge}: "${celula.simbolo}"`,
+        { codigoRazao: celula.codigoRazao, simbolo: celula.simbolo });
       quarentenadas++;
       continue;
     }
     const atual = porMunicipio.get(codigo6) ?? 0;
-    porMunicipio.set(codigo6, cfg.agregarPorMunicipio ? atual + valor : valor);
+    porMunicipio.set(codigo6, cfg.agregarPorMunicipio ? atual + celula.valor : celula.valor);
   }
   if (!porMunicipio.size) throw new Error('Prata: nenhum registro válido — tudo em quarentena.');
   console.log(`✓ Prata: ${porMunicipio.size} municípios, ${quarentenadas} linha(s) em quarentena.`);
@@ -155,6 +194,12 @@ try {
       );
       r.rowCount ? gravadas++ : semMalha++;
     }
+    // E18 (db/63): segunda fase do checkpoint DENTRO da transação do Ouro —
+    // ou as observações e a confirmação sobrevivem juntas, ou nenhuma das
+    // duas. Sem observação gravada não há o que confirmar: a carga fica
+    // CANDIDATA e o alerta de fonte parada continua enxergando a fonte
+    // como não atualizada, que é a verdade.
+    if (gravadas > 0) await confirmarCarga(cli, cargaId);
     await cli.query('COMMIT');
   } catch (e) {
     await cli.query('ROLLBACK');

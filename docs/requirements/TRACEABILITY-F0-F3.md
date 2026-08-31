@@ -166,6 +166,7 @@ Evidências abreviadas:
 | F2-R046 | RAG eval: groundedness | AI/DATA | F2-R016 | BLOCKED_EXTERNAL | cálculo e contexto sem suporte validados; corpus real homologado pendente | G2-RAG |
 | F2-R047 | RAG eval: citation correctness | AI/DATA | F2-R016 | BLOCKED_EXTERNAL | cálculo e citação incorreta validados; corpus real homologado pendente | G2-RAG |
 | F2-R048 | Sincronização incremental das fontes oficiais | DATA/OPERATIONAL | F2-R002–F2-R007 | VALIDATED | `docs/requirements/F2-R048-SINCRONIZACAO-FONTES.md`, E-F2-PIPE, EV-20260819-040 | G2-PIPE |
+| F2-R049 | Dois modos de resposta (Pesquisa vs IA Xingú) com persistência reabrível | AI/PRODUCT | F1-R012, F2-R048 | BLOCKED_EXTERNAL | software PASS (9 peças + 6 críticos, suíte integral verde) — pendem migração do dev e parecer RG-09 dos 4 indicadores EM_ANALISE; `docs/requirements/F2-R049-MODOS-DE-RESPOSTA.md`, EV-20260828-061 | G2-MODOS |
 
 ## F3 — Inteligência e pilotos
 

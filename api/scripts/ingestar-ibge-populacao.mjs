@@ -13,6 +13,7 @@
 // ============================================================
 import {
   pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar, quarentenar,
+  confirmarCarga, carregarRegrasValor, classificarValor,
 } from './lib-ingest.mjs';
 
 const ano = /^\d{4}$/.test(process.argv[2] ?? '') ? process.argv[2] : '2025';
@@ -53,21 +54,39 @@ try {
   if (!Array.isArray(series) || !series.length) {
     throw new Error('Validação Prata falhou: estrutura inesperada do agregado 6579.');
   }
-  // Valor suprimido pelo IBGE ("..." / "-") não derruba a carga: vai para a
-  // Quarentena (RF-INGEST-010) com o registro bruto e o motivo — ausência é
-  // resposta (RN-005), nunca zero nem estimativa.
+  // E20 (db/64): classificação central, convenção SIDRA (API de agregados do
+  // IBGE). Valor que a fonte suprimiu ou não dispõe ('X', '..', '...') vai
+  // para a Quarentena (RF-INGEST-010) com código tipado — ausência é resposta
+  // (RN-005), nunca zero nem estimativa. Mas '-' NÃO é ausência: é o zero
+  // absoluto que a fonte afirmou, e este conector o tratava errado.
+  const regrasValor = await carregarRegrasValor(db, { convencao: 'SIDRA' });
   const linhas = [];
   const invalidas = [];
   for (const s of series) {
     const codigo = String(s?.localidade?.id ?? '');
-    const valorTxt = s?.serie?.[ano];
     if (!/^\d{7}$/.test(codigo)) continue; // só nível N6 (município)
-    const valor = Number(valorTxt);
-    if (!Number.isFinite(valor) || valor <= 0 || valorTxt === '...' || valorTxt === '-') {
-      invalidas.push({ registro: s, motivo: `Valor inválido/indisponível para ${codigo} em ${ano}: "${valorTxt}"` });
+    const celula = classificarValor(s?.serie?.[ano], regrasValor);
+    if (!celula.promovivel) {
+      invalidas.push({
+        registro: s,
+        motivo: `Valor não promovível (${celula.status}) para ${codigo} em ${ano}: "${celula.simbolo}"`,
+        codigoRazao: celula.codigoRazao, simbolo: celula.simbolo,
+      });
       continue;
     }
-    linhas.push({ codigo, valor });
+    // Plausibilidade do INDICADOR, deliberadamente mantida: município da
+    // malha com população <= 0 não existe. Um ZERO_ABSOLUTO aqui seria a
+    // fonte afirmando algo impossível — quarentena com o símbolo preservado,
+    // para o humano decidir, em vez de virar observação "0 habitantes".
+    if (celula.valor <= 0) {
+      invalidas.push({
+        registro: s,
+        motivo: `População implausível (<= 0) para ${codigo} em ${ano}: "${celula.simbolo}"`,
+        codigoRazao: 'VALOR_IMPLAUSIVEL', simbolo: celula.simbolo,
+      });
+      continue;
+    }
+    linhas.push({ codigo, valor: celula.valor });
   }
   if (!linhas.length) throw new Error('Validação Prata falhou: nenhuma série municipal válida — tudo em quarentena.');
   console.log(`✓ Prata: ${linhas.length} municípios com população de ${ano}` +
@@ -76,7 +95,10 @@ try {
   const cargaId = await registrarCarga(db, {
     fonteId, hash, caminhoBronze: caminho, linhasLidas: linhas.length + invalidas.length,
   });
-  for (const q of invalidas) await quarentenar(db, cargaId, q.registro, q.motivo);
+  for (const q of invalidas) {
+    await quarentenar(db, cargaId, q.registro, q.motivo,
+      { codigoRazao: q.codigoRazao, simbolo: q.simbolo });
+  }
   await auditar(db, 'ingest', 'INGESTAO_BRONZE', 'Carga', String(cargaId), {
     fonte: 'IBGE agregado 6579', ano, hash, linhas: linhas.length,
   });
@@ -108,6 +130,9 @@ try {
       );
       r.rowCount ? gravadas++ : ignoradas++;
     }
+    // E18 (db/63): confirma a carga na MESMA transação do Ouro; sem
+    // observação gravada ela permanece CANDIDATA.
+    if (gravadas > 0) await confirmarCarga(cli, cargaId);
     await cli.query('COMMIT');
   } catch (e) {
     await cli.query('ROLLBACK');

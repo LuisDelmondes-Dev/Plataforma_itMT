@@ -11,6 +11,17 @@ import { PoolClient } from 'pg';
 export class AuditoriaService {
   constructor(private readonly db: DatabaseService) {}
 
+  /**
+   * P8 (gauntlet): dentro de UMA transação tenant o advisory lock é no-op
+   * (pg_advisory_xact_lock re-adquirido na mesma transação não bloqueia),
+   * então chamadas CONCORRENTES a registrar() no mesmo client — ex.:
+   * comparar() dispara 5 consultas em Promise.all — liam o MESMO "último
+   * hash" e quebravam o encadeamento. Esta fila serializa os registros por
+   * client de transação; entre transações distintas o advisory lock segue
+   * sendo a serialização.
+   */
+  private readonly filaPorCliente = new WeakMap<PoolClient, Promise<void>>();
+
   async registrar(
     ator: string,
     acao: string,
@@ -64,7 +75,13 @@ export class AuditoriaService {
       };
       const executar = async () => {
         const atual = this.db.currentTransactionClient();
-        if (atual) return gravar(atual, false);
+        if (atual) {
+          const anterior = this.filaPorCliente.get(atual) ?? Promise.resolve();
+          const proximo = anterior.then(() => gravar(atual, false));
+          // A fila nunca fica travada por rejeição; o erro propaga ao chamador.
+          this.filaPorCliente.set(atual, proximo.then(() => undefined, () => undefined));
+          return proximo;
+        }
         return this.db.withClient((client) => gravar(client, true));
       };
       if (contexto && !this.db.currentTransactionClient()) await this.db.withTenantTransaction(contexto, executar);

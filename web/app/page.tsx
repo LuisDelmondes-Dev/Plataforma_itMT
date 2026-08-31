@@ -16,22 +16,39 @@ import { REGIAO } from '@/lib/regiao';
 import { PesquisaPrincipal } from '@/components/PesquisaPrincipal';
 import { ReguaProcedencia } from '@/components/ReguaProcedencia';
 import { EstadoDado } from '@/components/EstadoDado';
+import { DashboardPesquisa, type CitacaoProcedencia, type RankingTopDto } from '@/components/DashboardPesquisa';
 
-interface Citacao {
-  fonte: string; url: string | null; data_referencia: string;
-  data_extracao?: string; licenca: string; hash: string;
-}
+type Citacao = CitacaoProcedencia;
 interface RespostaXingu {
   estado: 'RESPONDIDA' | 'CLARIFICACAO' | 'SEM_DADO' | 'BLOQUEADA';
   resposta: string;
-  plano?: { recorte: string; codigo: string | null; indicador?: string; local?: string; periodo?: { referencia: string } };
+  plano?: { recorte: string; codigo: string | null; indicador_id?: number; indicador?: string; local?: string; periodo?: { referencia: string } };
   clarificacao?: { pergunta: string; opcoes: { rotulo: string; pergunta_sugerida: string }[] };
   citacoes?: Citacao[];
   followups?: { rotulo: string; tipo: 'PERGUNTA' | 'LINK'; alvo: string }[];
+  contexto?: { indicador_id?: number; codigo_ibge?: string };
+  /** DASH-PESQUISA (P5): presente só no modo 'pesquisa' com estado RESPONDIDA. */
+  ranking_top?: RankingTopDto;
   auditoria: { numerais: number; vetos: number; interprete: string };
   latencia_ms: number;
 }
 interface Municipio { codigo_ibge: string; nome: string }
+
+/**
+ * Ano do DADO (não o da consulta), pela mesma regra do DashboardPesquisa:
+ * máximo entre as vigências da procedência do ranking. O plano carrega a data
+ * pedida (hoje) — exibi-la como "dados de AAAA" contradiz o motor (crítico
+ * P5/rodada 3: o chip era a última superfície dizendo 2026 com dado de 2024).
+ */
+function anoDoDado(r: RespostaXingu): string | null {
+  let max: string | null = null;
+  for (const m of r.ranking_top?.municipios ?? [])
+    for (const p of m.procedencia ?? []) {
+      const ano = String(p.data_referencia ?? '').slice(0, 4);
+      if (ano && (!max || ano > max)) max = ano;
+    }
+  return max;
+}
 
 export default function Home() {
   const [pergunta, setPergunta] = useState('');
@@ -52,7 +69,9 @@ export default function Home() {
       .then((ms) => setMunicipio(ms[0] ?? null))
       .catch(() => setMunicipio(null)); // painel é bônus: sem ele, a resposta segue
     try {
-      setResposta(await apiPost<RespostaXingu>('/xingu/pergunta', { pergunta: termo }));
+      // RN-MODO (P4): na home a barra é o lado "Pesquisa" do seletor — o
+      // lado "Xingú" navega para /xingu, que envia modo 'xingu'.
+      setResposta(await apiPost<RespostaXingu>('/xingu/pergunta', { pergunta: termo, modo: 'pesquisa' }));
     } catch (e) {
       setErro(e);
     } finally {
@@ -90,9 +109,14 @@ export default function Home() {
                       {resposta.plano.indicador ?? 'Indicador a confirmar'}
                       {' · '}
                       {resposta.plano.local ?? resposta.plano.codigo ?? REGIAO.nome}
-                      {resposta.plano.periodo?.referencia
-                        ? ` · dados de ${String(resposta.plano.periodo.referencia).slice(0, 4)}`
-                        : ''}
+                      {(() => {
+                        const ano =
+                          anoDoDado(resposta) ??
+                          (resposta.plano?.periodo?.referencia
+                            ? String(resposta.plano.periodo.referencia).slice(0, 4)
+                            : null);
+                        return ano ? ` · dados de ${ano}` : '';
+                      })()}
                     </span>
                   </div>
                 )}
@@ -133,6 +157,16 @@ export default function Home() {
                     <Link href={`/xingu?q=${encodeURIComponent(pergunta)}`}>continuar na Xingú →</Link>
                   </div>
                 </div>
+                {/* DASH-PESQUISA (P5): o dashboard só existe quando o motor
+                    mandou ranking_top (modo pesquisa, RESPONDIDA) — em
+                    CLARIFICACAO/SEM_DADO o texto acima já é a resposta. */}
+                {resposta.estado === 'RESPONDIDA' && resposta.ranking_top && (
+                  <DashboardPesquisa
+                    rankingTop={resposta.ranking_top}
+                    indicadorId={resposta.contexto?.indicador_id ?? resposta.plano?.indicador_id ?? null}
+                    citacoes={resposta.citacoes ?? []}
+                  />
+                )}
               </>
             )}
           </div>

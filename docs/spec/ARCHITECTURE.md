@@ -89,6 +89,28 @@
 - **Cache (Redis):** sessões, respostas frequentes, rate limiting.
 - **GIS/Tiles:** GeoServer + MapLibre/Cesium para 2D/3D.
 
+### 3.7. Pesquisa vs IA Xingú — contrato de resposta
+
+Todo módulo que responda perguntas territoriais respeita **dois contratos de
+saída** sobre o MESMO motor determinístico (RF023/RN16 do PRD):
+
+| | modo `pesquisa` | modo `xingu` |
+|---|---|---|
+| Propósito | responder rápido e completo, sem excesso | subsidiar a gestão: posicionar, decompor, comparar, sugerir |
+| Payload | envelope + `ranking_top` (top-5, média/total estadual, ausentes) | envelope + `dossie` (ranking completo, série, comparação, causas, sugestões) |
+| Sugestões | nunca | dossiê com FK obrigatória no dado-origem e prática de gestão com norma vigente citada ("dossiê, não decisão") |
+
+Invariantes que NENHUM modo relaxa: número só do motor (RG-03, auditor A06
+vale inclusive para o texto das sugestões); ausência é resposta (RN-005/RN11 —
+`SEM_DADO` é `SEM_DADO` nos dois modos); fonte e data em tudo (RF008); degrada
+sem LLM (RG-05 — o caminho determinístico é o primário). Toda execução, em
+qualquer modo, persiste normalizada nas tabelas `Pesquisa*` (db/48) com hash
+canônico verificável na reabertura, e correlaciona-se à trilha imutável por
+`pesquisa_id` (`EventoAuditoria` ações `CONSULTA_CHAT`/`PESQUISA_EXECUTADA`).
+A seleção do modo é do usuário (UI/API), nunca inferida de perfil. Detalhes de
+implementação: `api/src/xingu/orquestrador.service.ts` e
+`docs/gauntlet/PLANO.md`.
+
 ## 4. Padrões de implantação
 
 - **Início:** monólito modular (mais simples de operar) com fronteiras claras por módulo.

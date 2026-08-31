@@ -6,6 +6,7 @@ import { REGIAO } from '@/lib/regiao';
 import type { ModoPesquisa } from '@/components/SeletorModoPesquisa';
 import { ReguaProcedencia } from '@/components/ReguaProcedencia';
 import { TermoExplicado } from '@/components/TermoExplicado';
+import { DossieXingu, type DossieXinguDto } from '@/components/DossieXingu';
 import {
   ativarConversa, conversaAtiva, excluirConversa, listarConversas,
   novaConversa, salvarConversaAtiva, type ConversaXingu,
@@ -27,14 +28,36 @@ interface Situacao {
 }
 interface Followup { rotulo: string; tipo: 'PERGUNTA' | 'LINK'; alvo: string }
 interface Opcao { rotulo: string; pergunta_sugerida: string }
+/**
+ * Ano do DADO (não o da consulta), da procedência do ranking do dossiê —
+ * mesma regra da home (crítico de diferenciação: o chip dizia 2026 com dado
+ * de 2024, contradizendo a frase do motor e o próprio dossiê).
+ */
+function anoDoDado(r: Resposta): string | null {
+  let max: string | null = null;
+  for (const m of r.dossie?.ranking?.municipios ?? [])
+    for (const p of m.procedencia ?? []) {
+      const ano = String(p.data_referencia ?? '').slice(0, 4);
+      if (ano && (!max || ano > max)) max = ano;
+    }
+  return max;
+}
+
 interface Resposta {
   estado: 'RESPONDIDA' | 'CLARIFICACAO' | 'SEM_DADO' | 'BLOQUEADA';
+  /** RN-MODO (P4): o modo que moldou esta resposta. */
+  modo?: 'pesquisa' | 'xingu';
+  /** P1/P4: uuid da pesquisa persistida (reabertura em GET /v1/pesquisas/:id). */
+  pesquisa_id?: string;
   resposta: string;
   plano?: { recorte: string; codigo: string | null; indicador?: string; local?: string; periodo: { referencia: string } };
   clarificacao?: { pergunta: string; opcoes: Opcao[] };
+  valores?: { rotulo: string; valor: number; unidade: string }[];
   citacoes?: Citacao[];
   followups?: Followup[];
   contexto?: { indicador_id?: number; codigo_ibge?: string };
+  /** P6: presente só no modo xingu com estado RESPONDIDA — vira o dossiê do gestor. */
+  dossie?: DossieXinguDto;
   auditoria: { numerais: number; vetos: number; interprete: string };
   latencia_ms: number;
 }
@@ -123,7 +146,8 @@ function XinguConteudo() {
       const r = await fetch('/api/v1/xingu/pergunta', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pergunta, contexto: contexto.current }),
+        // RN-MODO (P4): esta página É o modo Xingú — sempre 'xingu'.
+        body: JSON.stringify({ pergunta, contexto: contexto.current, modo: 'xingu' }),
       });
       const d: Resposta = await r.json();
       if (d.contexto) contexto.current = { ...contexto.current, ...d.contexto };
@@ -271,7 +295,7 @@ function XinguConteudo() {
                     {' · '}
                     {m.dados.plano.local ?? m.dados.plano.codigo ?? REGIAO.nome}
                     {' · '}
-                    dados de {String(m.dados.plano.periodo?.referencia ?? '').slice(0, 4) || 'referência mais recente'}
+                    dados de {anoDoDado(m.dados) ?? (String(m.dados.plano.periodo?.referencia ?? '').slice(0, 4) || 'referência mais recente')}
                   </span>
                   <details className="plano-consulta-tecnico">
                     <summary>plano técnico</summary>
@@ -337,6 +361,28 @@ function XinguConteudo() {
         {ocupada && <div className="skeleton" style={{ height: 56, width: '60%' }} />}
         <div ref={fim} />
       </div>
+
+      {/* P6 (DASH-XINGU): o DOSSIÊ da última resposta do modo xingu entra
+          como seção própria abaixo da conversa — só quando a resposta o
+          trouxe (RESPONDIDA); SEM_DADO/CLARIFICACAO seguem sem dossiê. */}
+      {(() => {
+        const ultima = [...mensagens].reverse().find((m) => m.papel === 'xingu' && m.dados);
+        const d = ultima?.dados;
+        if (!d?.dossie) return null;
+        return (
+          <DossieXingu
+            dossie={d.dossie}
+            indicadorId={d.contexto?.indicador_id ?? null}
+            codigoIbge={d.contexto?.codigo_ibge ?? null}
+            recorte={d.plano?.recorte ?? 'ESTADO'}
+            codigo={d.plano?.codigo ?? null}
+            referencia={d.plano?.periodo?.referencia ?? d.dossie.ranking.referencia}
+            valores={d.valores}
+            citacoes={d.citacoes ?? []}
+            pesquisaId={d.pesquisa_id ?? null}
+          />
+        );
+      })()}
 
       <form
         onSubmit={(e) => { e.preventDefault(); perguntar(texto); }}

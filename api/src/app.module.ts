@@ -20,6 +20,7 @@ import { InteroperabilidadeModule } from './interoperabilidade/interoperabilidad
 import { ObservabilityModule } from './common/observability.service';
 import { ConformidadeModule } from './conformidade/conformidade.module';
 import { ParticipacaoModule } from './participacao/participacao.module';
+import { PesquisasModule } from './pesquisas/pesquisas.module';
 
 // Rate limit global: ativo em produção (ou forçado por RATE_LIMIT=1);
 // desligado no dev/testes para não interferir na suíte e2e.
@@ -50,6 +51,7 @@ const rateLimitAtivo =
     ObservabilityModule,
     ConformidadeModule,
     ParticipacaoModule,
+    PesquisasModule,
   ],
   controllers: [SaudeController],
   providers: rateLimitAtivo ? [{ provide: APP_GUARD, useClass: ThrottlerGuard }] : [],

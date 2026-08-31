@@ -31,6 +31,15 @@ test('itmt_app não recebe DML amplo nem default privileges perigosos', async ()
       'ParticipacaoCidada:INSERT','ParticipacaoCidada:UPDATE',                                // db/40 (participação F6)
       'SubtemaConsulta:UPDATE',                                                               // db/46 (parecer promove subtema a DISPONIVEL)
       'Autorizacao:UPDATE',                                                                   // db/47 (arquivamento auditado de autorizacao)
+      // db/48 (gauntlet P1 — pesquisas persistidas; imutáveis: INSERT sem UPDATE/DELETE):
+      'Pesquisa:INSERT','PesquisaIndicador:INSERT','PesquisaIndicadorMunicipio:INSERT',
+      'PesquisaSerieHistorica:INSERT','PesquisaCausa:INSERT','PesquisaDashboard:INSERT',
+      'PesquisaSugestao:INSERT','PesquisaFonte:INSERT','PesquisaExecucaoAgente:INSERT',
+      'ObservacaoCausa:INSERT',                                                          // db/49 (gauntlet P3 — decomposição por causa; append-only, correção é recarga)
+      // db/61 (E6 — golden set persistido): pergunta é upsert do gerador
+      // (INSERT+UPDATE, aposentadoria = Ativa=false, nunca DELETE);
+      // avaliação é histórico append-only (INSERT sem UPDATE/DELETE):
+      'GoldenPergunta:INSERT','GoldenPergunta:UPDATE','GoldenAvaliacao:INSERT',
     ]);
     for (const row of amplos.rows) assert.ok(permitidos.has(`${row.table_name}:${row.privilege_type}`), `grant excedente: ${row.table_name}:${row.privilege_type}`);
     const defaults = await owner.query(
