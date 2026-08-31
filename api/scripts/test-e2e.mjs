@@ -38,6 +38,10 @@ const SUITES_PADRAO = [
   // ANTES de ranking.unit.mjs de propósito: os municípios sintéticos
   // 5199xxx daquela suíte ainda não existem e a contagem de 142 é pura.
   'test/malha.unit.mjs',
+  // Evolução E21 (ADR-010 — malha VIGENTE na data de referência, db/66).
+  // Logo após malha.unit.mjs (aquela trava o snapshot, esta a leitura no
+  // tempo) e, pelo mesmo motivo dela, ANTES de ranking.unit.mjs.
+  'test/malha-vigente.unit.mjs',
   // Gauntlet "Pesquisa vs IA Xingú" (docs/gauntlet/PLANO.md) — ratchet:
   'test/pesquisas.unit.mjs',
   'test/ranking.unit.mjs',

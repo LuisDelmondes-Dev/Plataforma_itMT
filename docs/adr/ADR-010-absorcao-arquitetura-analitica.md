@@ -373,6 +373,110 @@ Substituição integral foi REJEITADA: reescreveria todo o SQL da API, os 212
 testes e as evidências de gate, para reimplementar do zero invariantes que a
 proposta não contempla.
 
+### E21 — malha territorial vigente na data de referência (db/66)
+
+**O gap era entre dois pedaços da própria casa, não uma falta de dado.**
+`"Municipio_DataInstalacao"` existe desde o db/57 (E4) e era usada **11 vezes
+dentro do próprio db/57 e em nenhum outro lugar do programa** —
+`grep -rn "DataInstalacao" api/src/` devolvia zero. A plataforma sabia quando
+cada município foi instalado e o motor tratava os 142 municípios como
+universo fixo em qualquer ano. Boa Esperança do Norte (5101837) foi instalado
+em 2025-01-01: numa referência de 2022 ele não é dado **faltante**, está
+**fora do universo**. Contar ausência onde não há território é o espelho da
+imputação que a RN-005 proíbe — lá se inventa número, aqui se inventava
+lacuna.
+
+**Medido, não suposto.** No banco dev (leitura, 31/08/2026), o indicador
+"População residente — Censo 2022" (db/19) tem cobertura COMPLETA da malha
+real de 2022 e mesmo assim o ranking respondia
+`total_municipios: 142, ausentes: 1 (5101837)` — a verdade é `141, ausentes:
+0`. O portal dizia "1 município sem dado" onde não faltava absolutamente
+nada.
+
+**As duas evidências externas.** (1) *Fonte oficial, medida ao vivo por nós
+em 31/08*: a API SIDRA do IBGE (tabela 4709, variável 93, período 2022, nível
+município, UF 51) devolve **exatamente 141 registros**, sem Boa Esperança do
+Norte; conferido contra o snapshot desta base **como conjunto exato, zero
+diferença nos dois sentidos**. (2) *Documentação externa, pacote Core R2.3.4*:
+modela a mesma regra como `referencia.municipios_mt_validos_em(data)` e a
+promove a **gate bloqueante de homologação (H03)**. Nenhum DDL foi copiado — o
+pacote usa outro esquema, outra nomenclatura e uma tabela `territorio`
+genérica que esta casa não tem. O que se absorve é a **tese**: "quais
+municípios existiam na data X" é pergunta de PRIMEIRA CLASSE do motor, não
+detalhe de carga. Provado no laboratório: 141 em 2024-12-31, 142 em
+2025-01-01.
+
+**Forma escolhida: função, e a alternativa recusada.** View não recebe
+parâmetro, e a pergunta é inerentemente parametrizada pela data — uma view
+"vigente hoje" seria pior que o bug, porque congelaria o presente sobre a
+série histórica. Coluna derivada só pode ser verdadeira em relação a UMA
+data. Ficou `"MunicipiosVigentesEm"(date)`, função SQL `STABLE` no padrão que
+a casa já usa para pergunta parametrizada com grant próprio
+(`"ResolverApiClientePorHash"`, db/29; `"ContextoTenant_Id"`, db/24),
+`SECURITY INVOKER` de propósito (`"Municipio"` já é legível por `itmt_app` e
+não tem RLS — DEFINER seria privilégio sem necessidade), `REVOKE` de PUBLIC +
+`GRANT EXECUTE` só a `itmt_app`.
+
+**A metade que carrega o peso é o NULL.** `DataInstalacao` é NULL em **141 dos
+142** municípios, e NULL significa "existe desde sempre no horizonte da base",
+não "data desconhecida". O db/57 já escrevia inline exatamente
+`DataInstalacao IS NULL OR <= data` (linhas 1815 e 1837); o db/66 não inventa
+regra, **promove esse predicado a nome próprio**. Escrever só `<= p_data`
+devolveria 0 municípios em 2022 e 1 em 2025 — erro catastrófico e silencioso,
+por isso está travado no ratchet.
+
+**Consumidor real:** `IndicadoresService.ranking()` e `.mapa()`. No ranking a
+correção é **visível ao usuário** (`total_municipios` e `ausentes` alimentam
+"N municípios sem dado" no dossiê e "Ver todos os N municípios"); no mapa é
+hoje **numericamente inerte** — município não instalado não tem observação ≤
+referência, então já não entrava na lista — e foi feita mesmo assim pela
+coerência declarada em `paresRecalculo()`: ranking e coroplético do mesmo
+dossiê partem do MESMO universo por construção, não por coincidência
+aritmética.
+
+**Achado colateral, registrado sem corrigir:** `web/public/mt-municipios.geojson`
+tem **141 feições e não contém 5101837**. Ou seja, o mapa nunca pintou Boa
+Esperança do Norte como "sem dado" — ele simplesmente não a desenha, em ano
+nenhum. Isso é correto para 2022 e **errado para 2025+**, mas é lacuna de
+GEOMETRIA (arquivo de malha do IBGE), não de motor, e nenhuma mudança em
+`indicadores.service.ts` a resolve. GATILHO: atualizar o geojson para a malha
+de 2025 — e aí o consumidor da E21 já existe para dizer, por ano, quem deve
+ser desenhado.
+
+Ratchet: `api/test/malha-vigente.unit.mjs` (5 testes), registrado no runner
+logo após `malha.unit.mjs` e antes de `ranking.unit.mjs` (os municípios
+sintéticos 5199xxx daquela suíte ainda não existem). Arquivo novo em vez de
+extensão de `malha.unit.mjs` porque aquela trava o SNAPSHOT (invariante de
+dado) e esta trava a LEITURA NO TEMPO (invariante de motor) — misturá-las
+faria falha de motor parecer falha de malha no relatório do gate. O teste do
+motor usa fixture sintética porque, num banco migrado do zero, **nenhum
+indicador APROVADO tem observação ≤ 2022** (os 6 do seed começam em
+2025-12-31): o Censo 2022 está `EM_ANALISE`, e isso está certo — publicar é
+ato humano (RG-09), e só o dev tem a curadoria feita. A catraca decisiva é
+dupla: em 2022 o município novo **não** é ausente; em 2025 ele **é** ausência
+legítima — a E21 não o esconde, o coloca no tempo certo.
+
+**ADIADO com gatilho:** (a) *extinção/fusão* de município (`valido_ate` no
+vocabulário do pacote externo) — MT não teve nenhuma no horizonte desta base e
+a coluna não existe em `"Municipio"`; inventá-la agora seria schema sem
+consumidor, o corte YAGNI da régua do db/59. Gatilho: a primeira lei estadual
+de extinção/fusão curada; a função é o ponto ÚNICO onde o predicado entraria —
+é justamente por isso que é função e não predicado espalhado. (b) *sucessão
+territorial* (o território do município novo saiu de outro; comparar 2022 com
+2025 compara malhas diferentes) — exige o ato de desmembramento com as
+parcelas de área/população, dado que não temos. Gatilho: curadoria da lei de
+criação com o município de origem; até lá o motor não afirma continuidade,
+responde por data. (c) `resolverRecorte('ESTADO')` no `TerritorioService`
+continua sobre a malha inteira, de propósito: ali o conjunto é FILTRO de
+observação, e município não instalado não tem observação ≤ referência — a
+mudança seria numericamente inerte e tocaria todos os recortes. Gatilho: se
+algum dia existir observação datada ANTES da instalação (hoje impossível — o
+db/57 apaga essas linhas e o ratchet trava). (d) `IndicadoresService.cobertura()`
+não recebeu a malha vigente porque **não tem uma data de referência**: agrega
+`max(DataReferencia)` sobre todo o histórico. Sem data, "vigente em quando?"
+não tem resposta, e arbitrar uma em silêncio é o que a RN-005 proíbe. Gatilho:
+quando a matriz ganhar parâmetro de ano.
+
 ## Consequências e riscos
 
 Cada evolução carrega grants mínimos e testes próprios (catraca de menor

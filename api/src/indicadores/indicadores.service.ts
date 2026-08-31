@@ -234,6 +234,31 @@ export class IndicadoresService {
     return r.rows;
   }
 
+  /**
+   * E21 (db/66): a malha municipal VIGENTE na data de referência — a única
+   * forma de o motor perguntar "quais municípios existiam em X".
+   *
+   * Por que isto não é detalhe: até a E21 o motor tratava os 142 municípios
+   * como universo fixo em qualquer ano, embora "Municipio_DataInstalacao"
+   * existisse desde o db/57. Boa Esperança do Norte (5101837) foi instalado
+   * em 2025-01-01: numa referência de 2022 ele não é dado FALTANTE, está
+   * FORA DO UNIVERSO. Tratá-lo como ausente é o espelho da imputação que a
+   * RN-005 proíbe — lá se inventa número, aqui se inventaria lacuna.
+   * Confirmado na fonte oficial: a API SIDRA do IBGE (tabela 4709, v. 93,
+   * 2022, municípios da UF 51) devolve 141 registros, sem o 5101837.
+   *
+   * A regra do NULL mora no SQL da função (NULL = vigente sempre, 141 dos
+   * 142 municípios) — deliberadamente NÃO reimplementada aqui, para que
+   * exista um ponto único de verdade quando a extinção/fusão entrar.
+   */
+  private async malhaVigente(dataReferencia: string) {
+    const r = await this.db.query<{ codigo: string; nome: string }>(
+      `SELECT codigo_ibge AS codigo, nome FROM "MunicipiosVigentesEm"($1::date)`,
+      [dataReferencia],
+    );
+    return r.rows;
+  }
+
   private procedenciaDe(linhas: LinhaObs[]): Procedencia[] {
     const vistos = new Map<string, Procedencia>();
     // E3: linhas que colapsam na mesma citação (fonte|referência|hash) podem
@@ -547,7 +572,19 @@ export class IndicadoresService {
     };
   }
 
-  /** RF-ADMIN-002 (recorte simplificado): matriz de cobertura município × tema. */
+  /**
+   * RF-ADMIN-002 (recorte simplificado): matriz de cobertura município × tema.
+   *
+   * E21 — NÃO recebeu a malha vigente, de propósito: esta matriz não tem UMA
+   * data de referência (ela agrega `max(DataReferencia)` sobre TODO o
+   * histórico de cada par município × tema). Sem data, "vigente em quando?"
+   * não tem resposta — e escolher uma (hoje? o max global?) seria arbitrar em
+   * silêncio, exatamente o que a RN-005 proíbe. É superfície ADMIN, não
+   * pública, e a linha de um município recém-instalado já se lê pelo que ela
+   * é: sem observação anterior à instalação.
+   * GATILHO para revisitar: quando/se a matriz ganhar parâmetro de ano —
+   * aí a pergunta passa a ter data e `malhaVigente()` se aplica sem ambiguidade.
+   */
   async cobertura() {
     const r = await this.db.query(
       `SELECT m."Municipio_CodigoIbge" AS codigo_ibge, m."Municipio_Nome" AS municipio,
@@ -712,9 +749,13 @@ export class IndicadoresService {
   async mapa(params: { indicadorId: number; referencia?: string | null }) {
     const meta = await this.meta(params.indicadorId); // impõe APROVADO (RG-09)
     const ref = params.referencia ?? new Date().toISOString().slice(0, 10);
-    const codigos = await this.db.query<{ codigo: string }>(
-      `SELECT "Municipio_CodigoIbge" AS codigo FROM "Municipio"`,
-    );
+    // E21 (db/66): mesma malha vigente que o ranking usa. Aqui a mudança é
+    // numericamente INERTE hoje (município não instalado não tem observação
+    // ≤ ref, então já não entrava na lista) — o motivo de fazê-la mesmo
+    // assim é a coerência declarada em paresRecalculo(): ranking e
+    // coroplético do mesmo dossiê partem do MESMO universo, por construção
+    // e não por coincidência aritmética.
+    const codigos = await this.malhaVigente(ref);
     let municipios: {
       codigo_ibge: string;
       valor: number;
@@ -723,7 +764,7 @@ export class IndicadoresService {
       status_dado?: StatusDado;
     }[];
     if (meta.tipo_agregacao === 'RECALCULO') {
-      const pares = await this.paresRecalculo(meta, codigos.rows.map((c) => c.codigo), ref);
+      const pares = await this.paresRecalculo(meta, codigos.map((c) => c.codigo), ref);
       municipios = pares.map((p) => {
         // E3: a taxa herda o PIOR status das duas parcelas (PRELIMINAR contamina).
         const status = piorStatus([p.num.status_dado, p.den.status_dado]);
@@ -738,7 +779,7 @@ export class IndicadoresService {
     } else {
       const linhas = await this.observacoes(
         params.indicadorId,
-        codigos.rows.map((c) => c.codigo),
+        codigos.map((c) => c.codigo),
         ref,
       );
       municipios = linhas.map((l) => ({
@@ -790,11 +831,13 @@ export class IndicadoresService {
     const n = Math.min(Math.max(Math.trunc(params.n ?? 5), 1), 142);
     const { rotulo } = await this.territorio.resolverRecorte('ESTADO', null, ref);
 
-    const todos = await this.db.query<{ codigo: string; nome: string }>(
-      `SELECT "Municipio_CodigoIbge" AS codigo, "Municipio_Nome" AS nome FROM "Municipio"`,
-    );
-    const nomePor = new Map(todos.rows.map((m) => [m.codigo, m.nome]));
-    const codigos = todos.rows.map((m) => m.codigo);
+    // E21 (db/66): o universo é a malha VIGENTE em `ref`, não os 142 fixos.
+    // É aqui que a correção é visível: `total_municipios` e `ausentes` são
+    // publicados ao usuário ("N municípios sem dado" no dossiê). Município
+    // não instalado na referência sai dos DOIS — não é ausência (RN-005).
+    const todos = await this.malhaVigente(ref);
+    const nomePor = new Map(todos.map((m) => [m.codigo, m.nome]));
+    const codigos = todos.map((m) => m.codigo);
 
     // Mesmo arredondamento que consultar() publica (RECALCULO: 1 casa).
     const casas = meta.tipo_agregacao === 'RECALCULO' ? 1 : 2;
