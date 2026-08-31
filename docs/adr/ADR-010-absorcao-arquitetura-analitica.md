@@ -516,3 +516,36 @@ documento e não pelo usuário, e contradiz o `Guia_Local_Only.md` da mesma
 entrega, que declara a plataforma local-first. A execução física já acontece
 localmente; o que falta para os seis gates restantes é o pacote Python do
 runtime, nunca entregue.
+
+Adendo 31/08 (Core R2.3.6 — Instalação e Execução Física Local): 5 tabelas de
+controle operacional local (ambiente, migração aplicada com SHA-256, healthcheck,
+backup, teste de restauração), papéis PostgreSQL separados, observabilidade
+(`pg_stat_statements`, slow query, log de DDL) e um controlador único de ciclo
+de vida. Bateria: os mesmos zeros de sempre.
+
+**Convergência confirmada e MEDIDA, não apenas anotada.** A tese central do
+pacote — *"não basta ter backup; é preciso ter backup comprovadamente
+restaurável"* — já é doutrina desta casa desde o `provar-backup-restore.mjs`
+(`npm run test:restore`). Executamos a nossa prova com as 66 migrações
+aplicadas: **PASS**, 86 tabelas restauradas, backup em 1,06 s e **RTO de
+restauração em 9,35 s**. A nossa versão ainda reporta RTO, que a deles não
+mede. Registre-se o método: esta convergência foi verificada rodando, e não
+declarada — exatamente a lição que o adendo do E18/E19 obrigou a aprender.
+
+**Um gap real, com consumidor real: E23 — papel próprio para a ingestão.**
+Hoje `lib-ingest.mjs` conecta pelo `DATABASE_URL`, cujo padrão é o **dono
+superusuário**, e a catraca de menor privilégio (`least-privilege.unit.mjs`)
+vigia apenas o `itmt_app` da API. Ou seja: a superfície que baixa arquivo da
+internet, faz parse e escreve é a que roda com mais privilégio de todas — o
+inverso do desejável. O pacote propõe `itmt_ingest` com grants restritos, e a
+proposta é boa e alinhada à doutrina "dois papéis" já documentada.
+
+**Não absorvido nesta rodada, por prudência operacional e não por dúvida
+técnica.** Criar o papel exige escrever no banco de desenvolvimento do usuário,
+reemitir grants sobre ~86 tabelas e trocar a credencial de todos os conectores;
+feito errado, quebra a ingestão inteira. É mudança de infraestrutura que pede
+decisão e janela do usuário, logo após ele ter aplicado 18 migrações. Fica
+como **E23**, com o gatilho explícito: executar quando o usuário puder validar
+a ingestão ponta a ponta com a credencial nova. Os demais itens (observabilidade,
+registro de healthcheck e de backup no próprio banco, papéis `itmt_admin` e
+`itmt_readonly`) permanecem sem consumidor identificado e não entram.
