@@ -58,6 +58,10 @@ const SUITES_PADRAO = [
   // quarentena idempotente). Cria fontes/cargas sintéticas próprias; roda
   // antes de status-dado.unit.mjs, que mexe no catálogo de indicadores.
   'test/carga-candidata.unit.mjs',
+  // Evolução E20 (db/64 — status do VALOR como domínio curado). Vizinha da
+  // E18/E19 porque compartilha a doutrina de carga/quarentena; cria fonte e
+  // cargas sintéticas próprias e as desfaz.
+  'test/status-valor.unit.mjs',
   // Evolução E3 (db/60 — status do dado no quinteto de procedência). Por
   // último de propósito: cria/remove um indicador sintético aprovado.
   'test/status-dado.unit.mjs',

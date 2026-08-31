@@ -18,7 +18,7 @@
 import {
   pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar,
   verificarEsquema, quarentenar,
-  promoverObservacoes,
+  promoverObservacoes, carregarRegrasValor, classificarValor,
 } from './lib-ingest.mjs';
 
 const PRESETS = {
@@ -118,17 +118,34 @@ try {
     fonte: cfg.fonte, ano, hash, linhas: series.length,
   });
 
+  // E20 (db/64): este conector é SIDRA por construção (API de agregados do
+  // IBGE). Até aqui ele mandava o '-' para a quarentena como se fosse
+  // ausência — enquanto o ingestar-pacote-f1-ibge, lendo a MESMA API,
+  // convertia o mesmo '-' para 0. A classificação agora é uma só.
+  const regrasValor = await carregarRegrasValor(db, { convencao: 'SIDRA' });
+
   // Prata com quarentena
   const linhas = [];
   for (const s of series) {
     const codigo = String(s?.localidade?.id ?? '');
     if (!/^\d{7}$/.test(codigo)) continue; // ignora níveis não-municipais
-    const valor = Number(s?.serie?.[ano]);
-    if (!Number.isFinite(valor) || valor < 0 || s?.serie?.[ano] === '...' || s?.serie?.[ano] === '-') {
-      await quarentenar(db, cargaId, s, `Valor inválido/indisponível para ${ano}: "${s?.serie?.[ano]}"`);
+    const celula = classificarValor(s?.serie?.[ano], regrasValor);
+    if (!celula.promovivel) {
+      await quarentenar(db, cargaId, s,
+        `Valor não promovível (${celula.status}) para ${ano}: "${celula.simbolo}"`,
+        { codigoRazao: celula.codigoRazao, simbolo: celula.simbolo });
       continue;
     }
-    linhas.push({ codigo, valor });
+    // Plausibilidade do INDICADOR (não é status do valor): nenhum agregado
+    // deste conector admite negativo. Zero, sim — inclusive o ZERO_ABSOLUTO
+    // que a fonte afirmou.
+    if (celula.valor < 0) {
+      await quarentenar(db, cargaId, s,
+        `Valor negativo implausível para ${ano}: "${celula.simbolo}"`,
+        { codigoRazao: 'VALOR_IMPLAUSIVEL', simbolo: celula.simbolo });
+      continue;
+    }
+    linhas.push({ codigo, valor: celula.valor });
   }
   if (!linhas.length) throw new Error('Prata: nenhum registro válido — tudo em quarentena.');
   console.log(`✓ Prata: ${linhas.length} válidos, ${series.length - linhas.length} descartados/quarentenados.`);

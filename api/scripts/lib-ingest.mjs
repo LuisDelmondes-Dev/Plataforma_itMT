@@ -73,7 +73,8 @@ export async function carregarConfigIngestao(db, caminhoConfig) {
     const r = await db.query(
       `SELECT "FonteConectorConfiguracao_Conteudo"   AS conteudo,
               "FonteConectorConfiguracao_Versao"     AS versao,
-              "FonteConectorConfiguracao_HashSha256" AS hash
+              "FonteConectorConfiguracao_HashSha256" AS hash,
+              "FonteConectorConfiguracao_ConectorSlug" AS conector_slug
          FROM "FonteConectorConfiguracao"
         WHERE "FonteConectorConfiguracao_Slug" = $1
           AND "FonteConectorConfiguracao_Vigente"`,
@@ -104,7 +105,12 @@ export async function carregarConfigIngestao(db, caminhoConfig) {
         );
       }
     }
-    return { slug, config: linha.conteudo, origem: 'banco', versao: linha.versao, hash: linha.hash };
+    return {
+      slug, config: linha.conteudo, origem: 'banco', versao: linha.versao, hash: linha.hash,
+      // E20 (db/64): o conector dono desta config é o que resolve QUAL
+      // convenção de símbolos aplicar às células deste CSV.
+      conectorSlug: linha.conector_slug ?? null,
+    };
   }
 
   if (textoArquivo === null) {
@@ -112,7 +118,206 @@ export async function carregarConfigIngestao(db, caminhoConfig) {
       `Config de ingestão não encontrada: nem no banco (slug "${slug}") nem no arquivo ${caminhoConfig}.`,
     );
   }
-  return { slug, config: JSON.parse(textoArquivo), origem: 'arquivo', versao: null, hash: null };
+  return {
+    slug, config: JSON.parse(textoArquivo), origem: 'arquivo', versao: null, hash: null,
+    conectorSlug: null,
+  };
+}
+
+// ============================================================
+// E20 (ADR-010 / db/64) — STATUS DO VALOR
+//
+// Antes desta seção, QUATRO conectores decidiam sozinhos o que uma célula
+// queria dizer, e discordavam entre si sobre o MESMO símbolo da MESMA fonte:
+// ingestar-pacote-f1-ibge convertia '-' do SIDRA para 0 (certo, e
+// documentado); ingestar-ibge-agregado e ingestar-ibge-populacao mandavam o
+// mesmo '-' para a quarentena como se fosse ausência (errado: some da base o
+// município que a fonte declarou ter zero); e o coletor Python destruía a
+// distinção antes de qualquer conector ver.
+//
+// Daqui em diante existe UM ponto de decisão — classificarValor() — e a
+// convenção da fonte é DADO curado ("ConvencaoValorSimbolo", db/64), não
+// constante no parser.
+//
+// A REGRA DE PROMOÇÃO, em uma frase: só status PROMOVÍVEL vira observação
+// numérica. O resto NÃO vira zero e NÃO vira observação — vai para a
+// quarentena com código tipado e o símbolo original preservado.
+// ============================================================
+
+/**
+ * Fallback embutido das convenções, na mesma forma do catálogo (db/64).
+ *
+ * Existe pelo mesmo motivo do fallback de arquivo em carregarConfigIngestao:
+ * degradação segura (espírito da RG-05). Um banco anterior ao db/64 não pode
+ * fazer o ingestar-pacote-f1-ibge REGREDIR — ele já acertava o '-' do SIDRA
+ * antes desta evolução, e tem de continuar acertando.
+ *
+ * O BANCO é a fonte de verdade; isto aqui só entra quando a tabela não
+ * existe. api/test/status-valor.unit.mjs é a catraca anti-drift: quem editar
+ * o seed do db/64 sem editar este objeto (ou vice-versa) quebra a suíte.
+ */
+export const CONVENCOES_EMBUTIDAS = Object.freeze({
+  SIDRA: {
+    '-': 'ZERO_ABSOLUTO',
+    '0': 'VALOR',
+    X: 'SUPRIMIDO',
+    '..': 'NAO_APLICAVEL',
+    '...': 'NAO_DISPONIVEL',
+  },
+  TABNET_TABULACAO_COMPLETA: {
+    '-': 'ZERO_ABSOLUTO',
+    '0': 'VALOR',
+  },
+});
+
+/**
+ * Semântica dos status — espelho de "StatusValor" (db/64).
+ * `implicito` é o valor que o SÍMBOLO já carrega por si; null num status
+ * promovível significa "o número vem da própria célula".
+ */
+export const STATUS_VALOR_EMBUTIDO = Object.freeze({
+  VALOR:          { promovivel: true,  implicito: null },
+  ZERO_ABSOLUTO:  { promovivel: true,  implicito: 0 },
+  SUPRIMIDO:      { promovivel: false, implicito: null },
+  NAO_APLICAVEL:  { promovivel: false, implicito: null },
+  NAO_DISPONIVEL: { promovivel: false, implicito: null },
+  INVALIDO:       { promovivel: false, implicito: null },
+});
+
+/** Status não promovível ⇒ código de razão tipado da "Quarentena" (db/64). */
+const RAZAO_POR_STATUS = Object.freeze({
+  SUPRIMIDO: 'VALOR_SUPRIMIDO',
+  NAO_APLICAVEL: 'VALOR_NAO_APLICAVEL',
+  NAO_DISPONIVEL: 'VALOR_NAO_DISPONIVEL',
+  INVALIDO: 'VALOR_INVALIDO',
+});
+
+/**
+ * Resolve as regras de leitura de célula de um conector.
+ *
+ * Banco primeiro (mesma doutrina do E17): a convenção sai de
+ * "ConvencaoValorSimbolo"/"StatusValor", resolvida por
+ *   · `convencao` — código explícito, para o conector que já sabe de que
+ *     fonte veio (os três conectores IBGE são SIDRA por construção); ou
+ *   · `conectorSlug` — a coluna "FonteConector_ConvencaoValor" (db/64), para
+ *     o conector genérico de CSV, que só descobre a fonte pela config.
+ *
+ * Sem convenção resolvida devolve null, e null é o DEFAULT SEGURO: em
+ * classificarValor, só número puro vira valor — símbolo nenhum vira zero.
+ * É o comportamento correto para fonte cuja legenda ainda não foi curada
+ * (hoje: cnes, inep e os demais conectores sem convenção no db/64).
+ */
+export async function carregarRegrasValor(db, { convencao, conectorSlug } = {}) {
+  let codigo = convencao ?? null;
+  try {
+    if (!codigo && conectorSlug) {
+      const r = await db.query(
+        `SELECT "FonteConector_ConvencaoValor" AS c FROM "FonteConector"
+          WHERE "FonteConector_Slug" = $1`, [conectorSlug],
+      );
+      codigo = r.rows[0]?.c ?? null;
+    }
+    if (!codigo) return null;
+
+    const r = await db.query(
+      `SELECT s."ConvencaoValorSimbolo_Simbolo"      AS simbolo,
+              s."ConvencaoValorSimbolo_StatusValor"  AS status,
+              v."StatusValor_Promovivel"             AS promovivel,
+              v."StatusValor_ValorImplicito"         AS implicito
+         FROM "ConvencaoValorSimbolo" s
+         JOIN "StatusValor" v ON v."StatusValor_Codigo" = s."ConvencaoValorSimbolo_StatusValor"
+        WHERE s."ConvencaoValorSimbolo_Convencao" = $1
+          AND s."ConvencaoValorSimbolo_Ativa" AND v."StatusValor_Ativo"`,
+      [codigo],
+    );
+    if (!r.rows.length) return regrasEmbutidas(codigo);
+    const simbolos = new Map();
+    for (const l of r.rows) {
+      simbolos.set(l.simbolo, {
+        status: l.status,
+        promovivel: l.promovivel,
+        implicito: l.implicito === null ? null : Number(l.implicito),
+      });
+    }
+    return { convencao: codigo, origem: 'banco', simbolos };
+  } catch (erro) {
+    if (erro?.code !== '42P01' && erro?.code !== '42703') throw erro;
+    return regrasEmbutidas(codigo); // banco pré-db/64 ⇒ fallback honesto
+  }
+}
+
+function regrasEmbutidas(codigo) {
+  const tabela = codigo ? CONVENCOES_EMBUTIDAS[codigo] : null;
+  if (!tabela) return null;
+  const simbolos = new Map();
+  for (const [simbolo, status] of Object.entries(tabela)) {
+    simbolos.set(simbolo, { status, ...STATUS_VALOR_EMBUTIDO[status] });
+  }
+  return { convencao: codigo, origem: 'embutida', simbolos };
+}
+
+/**
+ * O ÚNICO ponto que decide o que uma célula bruta quer dizer.
+ * Função PURA: as regras já vêm resolvidas (carregarRegrasValor), então o
+ * ratchet prova símbolo a símbolo sem banco no ar.
+ *
+ * Devolve:
+ *   { simbolo, status, promovivel, valor, codigoRazao }
+ * onde `valor` é number quando promovível e null caso contrário — nunca 0
+ * por descuido — e `codigoRazao` é o código tipado da "Quarentena" (null
+ * quando a célula é promovível, porque aí não há descarte).
+ *
+ * Ordem de decisão, e o porquê de cada passo:
+ *  1. Símbolo catalogado vence o parse numérico. É o que faz '0' do SIDRA ser
+ *     VALOR e '-' ser ZERO_ABSOLUTO em vez de NaN.
+ *  2. Sem símbolo catalogado, número puro é VALOR. É todo o comportamento do
+ *     default seguro (fonte sem convenção curada).
+ *  3. Qualquer outra coisa é INVALIDO — inclusive célula vazia e letra de
+ *     faixa ('A'–'Z'), cujo status FAIXA_VALOR ficou adiado no db/64. O
+ *     adiamento é seguro exatamente por isto: cai aqui e nunca vira zero.
+ */
+export function classificarValor(bruto, regras) {
+  const simbolo = String(bruto ?? '').trim();
+  const doCatalogo = regras?.simbolos?.get(simbolo) ?? null;
+
+  const numero = (() => {
+    if (simbolo === '') return NaN;
+    return Number(simbolo.replace(',', '.'));
+  })();
+
+  let status;
+  let promovivel;
+  let implicito;
+  if (doCatalogo) {
+    ({ status, promovivel, implicito } = doCatalogo);
+  } else if (Number.isFinite(numero)) {
+    ({ promovivel, implicito } = STATUS_VALOR_EMBUTIDO.VALOR);
+    status = 'VALOR';
+  } else {
+    ({ promovivel, implicito } = STATUS_VALOR_EMBUTIDO.INVALIDO);
+    status = 'INVALIDO';
+  }
+
+  let valor = null;
+  if (promovivel) {
+    valor = implicito !== null && implicito !== undefined ? Number(implicito) : numero;
+    if (!Number.isFinite(valor)) {
+      // Catálogo diz promovível mas a célula não tem número (ex.: alguém
+      // semeou um símbolo apontando para VALOR sem valor implícito). Não se
+      // inventa número: rebaixa para INVALIDO, que é a verdade.
+      status = 'INVALIDO';
+      promovivel = false;
+      valor = null;
+    }
+  }
+
+  return {
+    simbolo,
+    status,
+    promovivel,
+    valor,
+    codigoRazao: promovivel ? null : (RAZAO_POR_STATUS[status] ?? 'VALOR_INVALIDO'),
+  };
 }
 
 /**
@@ -357,14 +562,28 @@ export async function baixar(url) {
  * construção, a aplicação inflar o número de novo.
  *
  * Devolve true se a linha era nova, false se já existia.
+ *
+ * E20 (db/64): o 5º parâmetro traz o código de razão TIPADO e o símbolo
+ * ORIGINAL. O motivo em prosa continua (é o que o humano lê no dossiê); o
+ * que se ganha é poder CONTAR e FILTRAR — "quantas linhas a fonte suprimiu
+ * nesta carga?" deixa de exigir LIKE em string livre, que era como
+ * "código IBGE fora de MT" e "valor suprimido pela fonte" acabavam
+ * indistinguíveis. Opcional por compatibilidade: chamada antiga grava NULL,
+ * que é a verdade sobre ela (mesmo critério do db/60).
+ *
+ * A chave lógica da E19 é sha256(registro ‖ LF ‖ motivo) e NÃO inclui estes
+ * campos — de propósito: eles são derivados do mesmo par, então incluí-los
+ * não mudaria a identidade e só quebraria a dedução do histórico já gravado.
  */
-export async function quarentenar(db, cargaId, registro, motivo) {
+export async function quarentenar(db, cargaId, registro, motivo, { codigoRazao, simbolo } = {}) {
   const r = await db.query(
-    `INSERT INTO "Quarentena" ("Quarentena_CargaId","Quarentena_Registro","Quarentena_Motivo")
-     VALUES ($1,$2::jsonb,$3)
+    `INSERT INTO "Quarentena"
+       ("Quarentena_CargaId","Quarentena_Registro","Quarentena_Motivo",
+        "Quarentena_CodigoRazao","Quarentena_SimboloOrigem")
+     VALUES ($1,$2::jsonb,$3,$4,$5)
      ON CONFLICT ("Quarentena_CargaId","Quarentena_ChaveLogica") DO NOTHING
      RETURNING "Quarentena_Id"`,
-    [cargaId, JSON.stringify(registro), motivo],
+    [cargaId, JSON.stringify(registro), motivo, codigoRazao ?? null, simbolo ?? null],
   );
   return (r.rows?.length ?? 0) > 0;
 }

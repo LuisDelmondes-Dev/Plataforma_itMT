@@ -284,6 +284,91 @@ da migração, decisão do humano. Ratchet: `api/test/carga-candidata.unit.mjs`
 (vetos provados por SQL direto) + ajustes em `lib-ingest.unit.mjs` e
 `bordas-decisao.unit.mjs`.
 
+Adendo 31/08 (**E20 — status do VALOR como domínio curado**, db/64): segunda
+evolução seguida que não absorve ideia externa inédita — **conserta dano
+ativo**. Duas evidências independentes convergiram no mesmo dia:
+
+- **(a) auditoria do nosso próprio código.** O MESMO símbolo, da MESMA fonte,
+  tratado de três formas por quatro conectores. `ingestar-pacote-f1-ibge.mjs`
+  documentava certo e convertia `-` do SIDRA para 0; `ingestar-ibge-agregado.mjs`
+  e `ingestar-ibge-populacao.mjs` mandavam o mesmo `-` do mesmo IBGE para a
+  quarentena como se fosse ausência — o município que a fonte declarou ter
+  ZERO sumia da base, e o motor passava a omitir onde havia resposta;
+  `coletores/coletar_fontes.py` destruía a distinção ANTES de qualquer
+  conector ver, com `to_numeric(coerce)+dropna()` em `_normalizar` (célula
+  vazia, `-`, `...`, `X` sumiam do CSV: para CNES e INEP a supressão da fonte
+  era invisível ao pipeline auditado) e — pior — `fillna(0)` em `_por_nome`,
+  que INVENTAVA zero para célula ilegível, defeito que a auditoria original
+  ainda não tinha visto. E o motivo de quarentena era string livre: "código
+  IBGE fora de MT" e "valor suprimido pela fonte" eram indistinguíveis.
+- **(b) documentação oficial, via o pacote externo "Core R2.3.3".** O pacote
+  chegou à mesma conclusão pela legenda do SIDRA e registra explicitamente a
+  correção ("a versão anterior tratava `-` como ausência"). A ideia absorvida
+  não é o DDL (nada foi copiado): é que **a convenção de símbolos da fonte é
+  DADO de governança** — versionado, curado, citável — e não constante no
+  parser. É a tese da E17 um degrau adiante: db/55 absorveu o REGISTRO do
+  conector, db/62 a REGRA DE EXECUÇÃO da carga, db/64 a REGRA DE LEITURA DA
+  CÉLULA.
+
+O que entrou: `"StatusValor"` (domínio curado com a regra de promoção como
+DADO — `_Promovivel`, `_ValorImplicito`), `"ConvencaoValorFonte"` +
+`"ConvencaoValorSimbolo"` (convenção por fonte, versionada, com documentação
+`NOT NULL` — regra sem citação é palpite), `"FonteConector_ConvencaoValor"`
+ligando o catálogo vivo de db/55, e na `"Quarentena"` um **código de razão
+tipado** mais o **símbolo original preservado**. A regra inteira em uma
+frase: **só `VALOR` e `ZERO_ABSOLUTO` viram observação numérica; o resto não
+vira zero e não vira observação**. Um único ponto de decisão —
+`classificarValor()` em `scripts/lib-ingest.mjs` — substitui as quatro
+opiniões, com fallback embutido (RG-05-like) para banco pré-db/64, de modo
+que o `ingestar-pacote-f1-ibge`, o único que já acertava, não regride.
+
+Tabela × CHECK seguiu o precedente da casa, não o gosto: `"StatusValor"` é
+TABELA como `"DimensaoObservacao"` (E1, db/54 — o vocabulário é ditado pelas
+FONTES e a semântica que o código consome virou coluna, então um sexto
+símbolo entra por curadoria sem tocar o classificador); o código de razão da
+quarentena é CHECK como `"Carga_Status"` (db/63) e `"Observacao_StatusDado"`
+(db/60), porque esse vocabulário é NOSSO — razão nova só existe quando um
+validador novo existe, e tabela ali seria join sem destravar nada.
+
+Conciliação com o db/50, sem contradizê-lo: o db/50 já raciocinara sobre o
+TabNet em prosa e materializara 211 zeros sob a guarda "tabulação ESTADUAL
+COMPLETA ⇒ `-` é zero eventos; tabulação PARCIAL ⇒ ausência de coleta,
+RN-005". O db/64 **torna a prosa executável**: a convenção se chama
+`TABNET_TABULACAO_COMPLETA` — o nome carrega a condição — e só é atribuída aos
+dois conectores cuja completude o db/50 documenta. Não existe convenção
+`TABNET` genérica de propósito.
+
+Vocabulário adotado (6, todos com consumidor hoje): `VALOR`, `ZERO_ABSOLUTO`,
+`SUPRIMIDO`, `NAO_APLICAVEL`, `NAO_DISPONIVEL`, `INVALIDO`. **ADIADO com
+gatilho:** `FAIXA_VALOR` (as letras `A`–`Z` exceto `X`) — nenhum agregado que
+ingerimos publica faixa por letra, e a própria migração do pacote externo não
+semeia essa linha (ela existe só na tabela do .md); corte YAGNI na régua do
+db/59. O adiamento é **seguro por construção**: letra cai em `INVALIDO`, vai
+para a quarentena e nunca vira zero. Também ficaram sem convenção, de
+propósito, `cnes` e `inep` (é provável que sigam os mesmos sinais, mas
+provável não é documentado) e `datasus-tabnet` (cubo indeterminado — atribuir
+a regra de tabulação COMPLETA a cubo desconhecido é o erro que o db/50
+proibiu); todos caem no default seguro, que já é ganho enorme sobre "sumir no
+Python". Gatilho: curadoria que registre a legenda com citação.
+
+Coletores Python: continuam **sem escrever no banco** — só pararam de
+destruir informação. `_normalizar` preserva a célula original e só descarta
+por TERRITÓRIO; `_por_nome` deixou de inventar zero e falha alto em célula
+ilegível (aquele caminho agrega por soma e não tem como preservar a célula
+até o conector, então a saída honesta é recusar, não chutar). O
+`preencher_zeros` continua válido e é outra coisa: afirma sobre LINHA AUSENTE
+num recorte completo, não sobre célula — a mesma doutrina do db/50.
+
+Ratchet: `api/test/status-valor.unit.mjs` (9 testes), com a catraca que
+importa — nenhum dos quatro conectores pode voltar a comparar um sinal
+convencional na mão, e o fallback embutido tem de bater símbolo a símbolo com
+o seed do db/64. Nada é reclassificado retroativamente: quarentena anterior
+fica com código NULL, que é a verdade (mesmo critério do db/60). Medido no
+banco dev, em leitura: das 1.512 linhas únicas de quarentena, **1.293 (85,5%)
+são células `-` de agregados do IBGE** — zeros que a fonte afirmou e que o
+pipeline vinha jogando fora; elas voltam como observação na próxima carga de
+cada conector, não por UPDATE.
+
 Substituição integral foi REJEITADA: reescreveria todo o SQL da API, os 212
 testes e as evidências de gate, para reimplementar do zero invariantes que a
 proposta não contempla.

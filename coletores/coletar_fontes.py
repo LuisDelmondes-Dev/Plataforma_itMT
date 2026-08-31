@@ -101,9 +101,27 @@ def _por_nome(df: pd.DataFrame, coluna_nome: str, coluna_valor: str,
     desconhecidos = sorted(set(nomes) - set(municipios))
     if desconhecidos:
         raise ValueError(f"municípios da fonte sem correspondência no IBGE: {desconhecidos[:10]}")
-    valores = pd.to_numeric(df[coluna_valor], errors="coerce").fillna(0)
+    # E20 (db/64): `fillna(0)` INVENTAVA zero para célula ilegível — o pior
+    # dos três defeitos que a auditoria de 31/08 achou, porque produzia um
+    # número falso em vez de apenas perder um. Este caminho agrega por SOMA e
+    # não tem como preservar a célula original até o conector, então a saída
+    # honesta é FALHAR ALTO: quem decide o que uma célula ilegível significa é
+    # a curadoria da convenção da fonte, nunca o coletor.
+    valores = pd.to_numeric(df[coluna_valor], errors="coerce")
+    ilegiveis = df.loc[valores.isna(), coluna_valor]
+    if len(ilegiveis):
+        raise ValueError(
+            f"{len(ilegiveis)} célula(s) não numérica(s) em '{coluna_valor}': "
+            f"{list(ilegiveis.head(5))}. O coletor NÃO decide o que elas "
+            "significam (E20/db/64) — registre a convenção da fonte em "
+            '"ConvencaoValorSimbolo" ou trate a origem.'
+        )
     out = pd.DataFrame({"codigo_ibge": nomes.map(municipios), "valor": valores})
     out = out.groupby("codigo_ibge", as_index=False)["valor"].sum()
+    # `preencher_zeros` é outra coisa, e continua válido: município SEM LINHA
+    # numa tabulação COMPLETA de eventos é zero eventos — a mesma doutrina que
+    # o db/50 documentou para o TabNet. Aqui não se inventa nada sobre uma
+    # célula: afirma-se sobre uma linha ausente de um recorte completo.
     if preencher_zeros:
         base = pd.DataFrame({"codigo_ibge": list(municipios.values())})
         out = base.merge(out, how="left", on="codigo_ibge").fillna({"valor": 0})
@@ -347,11 +365,37 @@ def _coluna(df: pd.DataFrame, *pistas: str) -> str:
     raise KeyError(f"coluna não encontrada (pistas: {pistas}); cabeçalho: {list(df.columns)}")
 
 
+def _celula_bruta(valor: object) -> str:
+    """A célula tal como a fonte a serviu, só sem espaços em volta.
+
+    Vazio/NaN vira string vazia — que NÃO é zero: é uma célula que o conector
+    auditado vai classificar (e, sem convenção curada, quarentenar).
+    """
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return ""
+    return str(valor).strip()
+
+
 def _normalizar(df: pd.DataFrame, col_cod: str, col_val: str) -> pd.DataFrame:
+    """Extrai codigo_ibge + valor PRESERVANDO a célula original (E20 / db/64).
+
+    Antes, esta função fazia `to_numeric(errors="coerce")` seguido de
+    `dropna()`: célula vazia, '-', '...' e 'X' viravam NaN e SUMIAM do CSV
+    antes de o conector Node auditado ver qualquer coisa. Para CNES e INEP a
+    supressão da fonte era invisível ao pipeline — e '-', que na simbologia
+    das Normas de Apresentação Tabular é ZERO ABSOLUTO, era tratado como se
+    o município não existisse. Isso contradizia a doutrina do CLAUDE.md: o
+    coletor NORMALIZA e DELEGA; quem interpreta a célula é o conector, contra
+    a convenção curada da fonte ("ConvencaoValorSimbolo", db/64).
+
+    O único descarte que sobra aqui é TERRITORIAL — linha sem código IBGE de
+    MT não é dado deste estado. Isso não destrói informação de valor.
+    """
+    codigos = df[col_cod].astype(str).str.extract(r"(\d{6,7})")[0]
     out = pd.DataFrame({
-        "codigo_ibge": df[col_cod].astype(str).str.extract(r"(\d{6,7})")[0],
-        "valor": pd.to_numeric(df[col_val], errors="coerce"),
-    }).dropna()
+        "codigo_ibge": codigos,
+        "valor": df[col_val].map(_celula_bruta) if len(df) else pd.Series(dtype=str),
+    }).dropna(subset=["codigo_ibge"])
     return out[out["codigo_ibge"].str.startswith(UF_MT)].reset_index(drop=True)
 
 
