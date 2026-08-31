@@ -5,7 +5,7 @@
 // RF-INGEST-009 (linhagem) e RG-10 (auditoria encadeada).
 // ============================================================
 import { createHash } from 'node:crypto';
-import { closeSync, constants, mkdirSync, openSync, writeFileSync, readFileSync } from 'node:fs';
+import { closeSync, constants, mkdirSync, openSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { basename, resolve, sep } from 'node:path';
 import pg from 'pg';
 
@@ -365,6 +365,16 @@ export function salvarBronze(nomeArquivo, conteudo) {
 }
 
 export function lerBronze(caminho) {
+  // Mesmo teto do Bronze, verificado ANTES de ler: este é o caminho usado por
+  // ingestar-csv, e um arquivo grande demais derrubava o processo por OOM ou
+  // por ERR_STRING_TOO_LONG antes de qualquer validação acontecer.
+  const teto = Number(process.env.BRONZE_MAX_BYTES ?? 268435456);
+  const { size } = statSync(caminho);
+  if (size > teto) {
+    throw new Error(
+      `Bronze ${basename(caminho)} tem ${size} bytes, acima do teto de ${teto}. Leitura recusada.`,
+    );
+  }
   const conteudo = readFileSync(caminho, 'utf8');
   return { conteudo, hash: sha256(conteudo) };
 }
@@ -538,7 +548,35 @@ export async function baixar(url) {
   try {
     const r = await fetch(url, { signal: ctl.signal, headers: { accept: 'application/json' } });
     if (!r.ok) throw new Error(`HTTP ${r.status} em ${url}`);
-    return await r.text();
+
+    // Teto de tamanho aplicado DURANTE a leitura, não depois. O limite do
+    // Bronze (salvarBronze) só valia sobre um payload já inteiro em memória,
+    // então uma origem que devolvesse gigabytes derrubava o processo por OOM
+    // antes de a guarda existir. Aqui o corpo é lido em pedaços e a coleta é
+    // abortada assim que passa do teto — a fonte não decide quanta memória
+    // desta máquina ela ocupa.
+    const teto = Number(process.env.BRONZE_MAX_BYTES ?? 268435456);
+    const declarado = Number(r.headers.get('content-length') ?? NaN);
+    if (Number.isFinite(declarado) && declarado > teto) {
+      ctl.abort();
+      throw new Error(
+        `Resposta de ${url} declara ${declarado} bytes, acima do teto de ${teto}. Coleta abortada sem baixar.`,
+      );
+    }
+
+    const pedacos = [];
+    let total = 0;
+    for await (const pedaco of r.body) {
+      total += pedaco.length;
+      if (total > teto) {
+        ctl.abort();
+        throw new Error(
+          `Resposta de ${url} ultrapassou o teto de ${teto} bytes durante a leitura. Coleta abortada.`,
+        );
+      }
+      pedacos.push(pedaco);
+    }
+    return Buffer.concat(pedacos).toString('utf8');
   } finally {
     clearTimeout(t);
   }

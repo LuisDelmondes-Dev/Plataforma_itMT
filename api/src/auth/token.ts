@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 /**
  * Token de sessão assinado (HMAC-SHA256), stateless: `payload_b64.assinatura_b64`.
@@ -19,8 +19,41 @@ export interface Sessao {
 
 export type ContextoSessao = Required<Pick<Sessao, 'uid' | 'tid' | 'oid' | 'membershipVersion'>>;
 
+/**
+ * Segredo do HMAC de sessão.
+ *
+ * O fallback literal ('itmt-sessao-dev') existia sem condição alguma, e o
+ * fail-fast que deveria cobri-lo em main.ts só roda quando NODE_ENV é
+ * EXATAMENTE 'production' — ou seja, o guarda era comandado pela mesma
+ * variável que definia a exposição. Num ambiente publicado com NODE_ENV
+ * ausente, herdado ou com typo ('prod'), a chave HMAC virava uma string
+ * pública do repositório e qualquer um forjava `{"papel":"ADMIN"}`, furando
+ * o RG-09 pelo /admin.
+ *
+ * A regra passa a ser ALLOWLIST, não denylist: o literal estável só vale em
+ * 'development' e 'test' declarados. Qualquer outro caso — inclusive NODE_ENV
+ * ausente — recebe um segredo ALEATÓRIO por processo. Nada quebra no uso local
+ * (as sessões apenas não sobrevivem a um restart, o que em dev é aceitável) e
+ * o token deixa de ser forjável em qualquer ambiente não declarado.
+ */
+let segredoEfemero: string | undefined;
+
 function segredo(): string {
-  return process.env.SESSION_SECRET ?? process.env.ADMIN_TOKEN ?? 'itmt-sessao-dev';
+  const configurado = process.env.SESSION_SECRET ?? process.env.ADMIN_TOKEN;
+  if (configurado) return configurado;
+
+  const ambiente = process.env.NODE_ENV;
+  if (ambiente === 'development' || ambiente === 'test') return 'itmt-sessao-dev';
+
+  if (segredoEfemero === undefined) {
+    segredoEfemero = randomBytes(32).toString('hex');
+    console.warn(
+      '[auth] SESSION_SECRET ausente e NODE_ENV não é development/test — ' +
+        'usando segredo efêmero deste processo. As sessões não sobreviverão a um reinício. ' +
+        'Defina SESSION_SECRET para operar de verdade.',
+    );
+  }
+  return segredoEfemero;
 }
 
 const b64url = (b: Buffer) => b.toString('base64url');
