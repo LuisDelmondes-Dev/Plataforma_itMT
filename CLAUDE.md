@@ -9,7 +9,7 @@ programa público estruturado em fases **F0–F7**, não um app CRUD. Quatro par
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16+ / pgvector | 66 migrações SQL escritas à mão, **sem ORM** |
+| `db/` | PostgreSQL 16+ / pgvector | 67 migrações SQL escritas à mão, **sem ORM** |
 | `api/` | NestJS 11 + driver `pg` cru | o **motor determinístico** |
 | `web/` | Next.js 16 / React 19 (App Router) | portal público, 23 páginas |
 | `coletores/` | Python | raspagem de fontes sem API (CNES/TabNet, INEP) |
@@ -114,12 +114,12 @@ npm run verificar-cadeia   # recomputa a cadeia SHA-256; exit 1 se quebrada
 ### Testes (suíte e2e — `node --test`)
 
 `scripts/test-e2e.mjs` **cria e derruba sozinho** um banco descartável, aplica
-todas as migrações, roda as 42 suítes e termina verificando a cadeia. Aponte
+todas as migrações, roda as 44 suítes e termina verificando a cadeia. Aponte
 `DATABASE_URL` para o banco **administrativo** (`postgres`), não para o dev:
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 282 testes, ~2,5 min
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 290 testes, ~2,5 min
 ```
 
 O runner recusa qualquer alvo cujo nome não termine em `_test`/`_teste`, e força
@@ -237,7 +237,7 @@ propósito** (mais rigoroso).
 
 ## Onde o programa realmente está
 
-Software local: **verde** — 66 migrações aplicam do zero, 282/282 testes, cadeia
+Software local: **verde** — 67 migrações aplicam do zero, 290/290 testes, cadeia
 íntegra, builds de API e web limpos, zero vulnerabilidades de produção no `npm audit`.
 
 **Atenção ao entrar (situação de 31/08/2026):** as migrações **48–64 e todo o

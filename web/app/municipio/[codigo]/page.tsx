@@ -12,7 +12,9 @@ import { formatarNumero } from '@/lib/format';
 interface Ficha {
   codigo_ibge: string;
   nome: string;
-  area_km2: string;
+  // Nulável de verdade: 131 dos 142 municípios estão sem área no banco. O tipo
+  // dizia `string` e o componente fazia Number(null) → 0, publicando "0 km²".
+  area_km2: string | null;
   regiao_imediata: string;
   regiao_intermediaria: string;
 }
@@ -96,7 +98,15 @@ export default async function FichaMunicipal(props: { params: Promise<{ codigo: 
         <TermoExplicado id="rgi">Região Imediata</TermoExplicado> de {ficha.regiao_imediata} ·{' '}
         <TermoExplicado id="rgint">Região Intermediária</TermoExplicado> de{' '}
         {ficha.regiao_intermediaria} ·{' '}
-        <span className="mono">{fmt.format(Number(ficha.area_km2))} km²</span>
+        {/* RN-005 na página mais visitada: `Number(null)` é 0, e o portal
+            publicava "0 km²" para os 131 municípios sem área cadastrada —
+            afirmando que o município tem área zero. `formatarNumero` já existia
+            exatamente para isso e devolve travessão. */}
+        <span className="mono">
+          {ficha.area_km2 === null
+            ? formatarNumero(null)
+            : `${formatarNumero(Number(ficha.area_km2))} km²`}
+        </span>
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 240px', gap: 16, alignItems: 'start' }} className="ficha-colunas">
