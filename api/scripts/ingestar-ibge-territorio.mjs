@@ -15,7 +15,7 @@
 // ============================================================
 import {
   pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar,
-  verificarEsquema, quarentenar,
+  verificarEsquema, quarentenar, confirmarCarga,
 } from './lib-ingest.mjs';
 import { carregarConfiguracaoRegional } from './regiao-config.mjs';
 
@@ -124,6 +124,12 @@ try {
         [l.codigo, l.nome, l.rgi, l.rgint],
       );
     }
+    // E18 (db/63): o Ouro deste conector é a MALHA ("Municipio"), não
+    // "Observacao" — por isso uma carga de território legítima tem zero
+    // observações, e por isso db/63 se recusa a reclassificar cargas sem
+    // observação por dedução. Aqui a confirmação é explícita e na mesma
+    // transação: `linhas` é não-vazio (o Prata aborta antes se for).
+    await confirmarCarga(cli, cargaId);
     await cli.query('COMMIT');
   } catch (e) {
     await cli.query('ROLLBACK');

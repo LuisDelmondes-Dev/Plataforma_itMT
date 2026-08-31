@@ -34,7 +34,7 @@ export class ValidacaoTecnicaService {
       obs: number; municipios: number; min: string | null; max: string | null;
       ref_recente: string | null; ref_futuras: number;
       fontes: number; fontes_sem_licenca: number;
-      cargas: number; cargas_bloqueadas: number;
+      cargas: number; cargas_bloqueadas: number; cargas_candidatas: number;
     }>(
       `SELECT count(o.*)::int AS obs,
               count(DISTINCT o."Observacao_CodigoIbge")::int AS municipios,
@@ -44,7 +44,13 @@ export class ValidacaoTecnicaService {
               count(DISTINCT f."Fonte_Id")::int AS fontes,
               count(DISTINCT f."Fonte_Id") FILTER (WHERE btrim(f."Fonte_Licenca") = '')::int AS fontes_sem_licenca,
               count(DISTINCT c."Carga_Id")::int AS cargas,
-              count(DISTINCT c."Carga_Id") FILTER (WHERE c."Carga_Status" <> 'PROMOVIDA')::int AS cargas_bloqueadas
+              -- E18 (db/63): o vocabulário de "Carga_Status" ganhou 'CANDIDATA'
+              -- (carga que baixou o bruto e nunca foi confirmada). O <> 'PROMOVIDA'
+              -- já a captura, e é o que se quer: para o dossiê RG-09, carga não
+              -- confirmada é tão problemática quanto carga com drift bloqueado.
+              -- O recorte extra existe só para o revisor humano saber QUAL é o caso.
+              count(DISTINCT c."Carga_Id") FILTER (WHERE c."Carga_Status" <> 'PROMOVIDA')::int AS cargas_bloqueadas,
+              count(DISTINCT c."Carga_Id") FILTER (WHERE c."Carga_Status" = 'CANDIDATA')::int AS cargas_candidatas
          FROM "Observacao" o
          JOIN "Fonte" f ON f."Fonte_Id" = o."Observacao_FonteId"
          JOIN "Carga" c ON c."Carga_Id" = o."Observacao_CargaId"
@@ -80,11 +86,15 @@ export class ValidacaoTecnicaService {
           : `Nenhuma data futura; mais recente ${s.ref_recente?.slice(0, 10) ?? '—'}.`,
       },
       {
-        nome: 'Cargas promovidas, sem drift bloqueado (RF-INGEST-005)',
+        nome: 'Cargas confirmadas, sem drift bloqueado (RF-INGEST-005 / E18)',
         ok: s.obs > 0 && s.cargas_bloqueadas === 0,
         detalhe: s.cargas_bloqueadas > 0
-          ? `${s.cargas_bloqueadas} carga(s) não promovida(s) alimentam este indicador — revise antes de publicar.`
-          : `As ${s.cargas} carga(s) de origem estão promovidas.`,
+          ? `${s.cargas_bloqueadas} carga(s) não confirmada(s) alimentam este indicador` +
+            (s.cargas_candidatas > 0
+              ? ` — ${s.cargas_candidatas} ainda CANDIDATA (baixou o bruto, nunca completou o Ouro)`
+              : ' — bloqueada(s) por drift de esquema') +
+            '. Revise antes de publicar.'
+          : `As ${s.cargas} carga(s) de origem estão confirmadas (PROMOVIDA).`,
       },
       {
         nome: 'Unidade declarada',

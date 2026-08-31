@@ -37,7 +37,11 @@ test('Bronze restringe destino, tamanho e preserva imutabilidade sem check-then-
 // status, e o dedup por hash de registrarCarga devolvia a mesma carga
 // bloqueada em toda reexecução. Caso real: PIB municipal ficou 1 mês
 // publicado com 141 observações de carga bloqueada (carga 14 do dev).
-test('verificarEsquema desbloqueia a carga quando o esquema é aceito ou volta a casar', async () => {
+//
+// E18 (db/63): desbloquear devolve a carga a CANDIDATA, não a PROMOVIDA —
+// sair do bloqueio significa "pode tentar de novo", nunca "deu certo".
+// Quem promove é confirmarCarga(), depois do Ouro.
+test('verificarEsquema desbloqueia a carga (para CANDIDATA) quando o esquema é aceito ou volta a casar', async () => {
   const { verificarEsquema, fingerprintDe } = await import('../scripts/lib-ingest.mjs');
   const amostra = { codigo: '5103403', valor: 1 };
   const fp = fingerprintDe(amostra);
@@ -56,9 +60,9 @@ test('verificarEsquema desbloqueia a carga quando o esquema é aceito ou volta a
         chamadas.push(sql);
         if (sql.includes('FROM "EsquemaFonte"'))
           return { rows: fpArmazenado ? [{ fp: fpArmazenado }] : [] };
-        if (sql.includes(`SET "Carga_Status" = 'PROMOVIDA'`)) {
+        if (sql.includes(`SET "Carga_Status" = 'CANDIDATA'`)) {
           if (this.estado.status !== 'BLOQUEADA_DRIFT') return { rows: [] }; // WHERE não casa
-          this.estado.status = 'PROMOVIDA';
+          this.estado.status = 'CANDIDATA';
           return { rows: [{ Carga_Id: params[0] }] };
         }
         return { rows: [] };
@@ -66,15 +70,21 @@ test('verificarEsquema desbloqueia a carga quando o esquema é aceito ou volta a
     };
   }
 
-  // 1) esquema volta a casar com o contrato → desbloqueia
+  // 1) esquema volta a casar com o contrato → desbloqueia (para CANDIDATA)
   const casa = bancoFalso({ fpArmazenado: fp, statusCarga: 'BLOQUEADA_DRIFT' });
   await verificarEsquema(casa, { fonteId: 1, cargaId: 14, amostra, aceitarNovo: false });
-  assert.equal(casa.estado.status, 'PROMOVIDA', 'esquema conforme deveria desbloquear a carga');
+  assert.equal(casa.estado.status, 'CANDIDATA', 'esquema conforme deveria desbloquear a carga');
 
-  // 2) aceite consciente de esquema novo → desbloqueia
+  // 2) aceite consciente de esquema novo → desbloqueia (para CANDIDATA)
   const aceita = bancoFalso({ fpArmazenado: 'outro-fingerprint', statusCarga: 'BLOQUEADA_DRIFT' });
   await verificarEsquema(aceita, { fonteId: 1, cargaId: 14, amostra, aceitarNovo: true });
-  assert.equal(aceita.estado.status, 'PROMOVIDA', '--aceitar-esquema deveria desbloquear a carga');
+  assert.equal(aceita.estado.status, 'CANDIDATA', '--aceitar-esquema deveria desbloquear a carga');
+
+  // 2b) E18: desbloquear NUNCA promove direto — a promoção é ato separado
+  assert.ok(
+    !casa.chamadas.some((s) => typeof s === 'string' && s.includes(`SET "Carga_Status" = 'PROMOVIDA'`)),
+    'verificarEsquema não pode promover carga: quem promove é confirmarCarga(), depois do Ouro',
+  );
 
   // 3) drift SEM aceite → continua lançando e a carga fica bloqueada
   const drift = bancoFalso({ fpArmazenado: 'outro-fingerprint', statusCarga: 'PROMOVIDA' });

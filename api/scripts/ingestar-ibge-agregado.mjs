@@ -157,14 +157,19 @@ try {
   }
 
   const dataRef = `${ano}${cfg.refDia}`;
-  const { gravadas, semMalha } = await promoverObservacoes(db, {
+  // E18 (db/63): promoverObservacoes confirma a carga (CANDIDATA⇒PROMOVIDA)
+  // no MESMO comando do Ouro, e só se algum município casou com a malha.
+  const { gravadas, semMalha, confirmada } = await promoverObservacoes(db, {
     indicadorId, fonteId, cargaId, dataReferencia: dataRef, linhas,
   });
 
   await auditar(db, 'ingest', 'PROMOCAO_OURO', 'Observacao', `${cfg.indicador}-${ano}`, {
-    carga_id: cargaId, gravadas, sem_malha: semMalha,
+    carga_id: cargaId, gravadas, sem_malha: semMalha, carga_confirmada: confirmada,
   });
-  console.log(`✓ Ouro: ${gravadas} observações (ref. ${dataRef}).`);
+  console.log(
+    `✓ Ouro: ${gravadas} observações (ref. ${dataRef})` +
+      (gravadas ? '.' : ' — carga permanece CANDIDATA (nada casou com a malha).'),
+  );
 } catch (e) {
   console.error(`✗ Pipeline abortado: ${e.message}`);
   process.exitCode = 1;

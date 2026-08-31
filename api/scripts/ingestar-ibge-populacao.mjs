@@ -13,6 +13,7 @@
 // ============================================================
 import {
   pool, registrarFonte, salvarBronze, lerBronze, registrarCarga, auditar, baixar, quarentenar,
+  confirmarCarga,
 } from './lib-ingest.mjs';
 
 const ano = /^\d{4}$/.test(process.argv[2] ?? '') ? process.argv[2] : '2025';
@@ -108,6 +109,9 @@ try {
       );
       r.rowCount ? gravadas++ : ignoradas++;
     }
+    // E18 (db/63): confirma a carga na MESMA transação do Ouro; sem
+    // observação gravada ela permanece CANDIDATA.
+    if (gravadas > 0) await confirmarCarga(cli, cargaId);
     await cli.query('COMMIT');
   } catch (e) {
     await cli.query('ROLLBACK');

@@ -163,6 +163,10 @@ try {
         const coberturaPct = pilotosPresentes.length * 10;
         const qualidadeOk = coberturaPct === 100 && invalidas.length < totalLinhas;
 
+        // E18 (db/63): promoverObservacoes confirma a carga
+        // (CANDIDATA⇒PROMOVIDA) no MESMO comando do Ouro. Uma carga do
+        // pacote alimenta várias variáveis: a primeira que gravar
+        // observação confirma; se nenhuma gravar, a carga fica CANDIDATA.
         const promovida = await promoverObservacoes(db, {
           indicadorId: indicadorR.rows[0].id, fonteId, cargaId,
           dataReferencia: d.ref, linhas: validas,

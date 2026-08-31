@@ -20,10 +20,9 @@
 //   "agregarPorMunicipio": true      // soma linhas repetidas do mesmo município
 // }
 // ============================================================
-import { readFileSync } from 'node:fs';
 import {
   pool, registrarFonte, lerBronze, registrarCarga, auditar,
-  verificarEsquema, quarentenar,
+  verificarEsquema, quarentenar, carregarConfigIngestao, confirmarCarga,
 } from './lib-ingest.mjs';
 
 const [, , configPath, csvPath] = process.argv;
@@ -55,10 +54,20 @@ function parseCsv(texto, sep) {
   return linhas;
 }
 
-const cfg = JSON.parse(readFileSync(configPath, 'utf8'));
 const db = pool();
 
 try {
+  // E17 (db/62): a config vem do BANCO (versão vigente pelo slug); o arquivo
+  // é fallback (banco pré-db/62 ou slug fora do catálogo). Divergência entre
+  // os dois gera warn dentro do loader e o banco vence.
+  const { config: cfg, origem: cfgOrigem, versao: cfgVersao, slug: cfgSlug } =
+    await carregarConfigIngestao(db, configPath);
+  console.log(
+    cfgOrigem === 'banco'
+      ? `✓ Config: banco — "FonteConectorConfiguracao" slug ${cfgSlug} v${cfgVersao} (E17, db/62)`
+      : `✓ Config: arquivo ${configPath} (fallback — slug "${cfgSlug}" fora do catálogo db/62)`,
+  );
+
   // RG-06: a base legal vem do config e é validada — sem ela, aborta
   const fonteId = await registrarFonte(db, cfg.fonte);
 
@@ -155,6 +164,12 @@ try {
       );
       r.rowCount ? gravadas++ : semMalha++;
     }
+    // E18 (db/63): segunda fase do checkpoint DENTRO da transação do Ouro —
+    // ou as observações e a confirmação sobrevivem juntas, ou nenhuma das
+    // duas. Sem observação gravada não há o que confirmar: a carga fica
+    // CANDIDATA e o alerta de fonte parada continua enxergando a fonte
+    // como não atualizada, que é a verdade.
+    if (gravadas > 0) await confirmarCarga(cli, cargaId);
     await cli.query('COMMIT');
   } catch (e) {
     await cli.query('ROLLBACK');

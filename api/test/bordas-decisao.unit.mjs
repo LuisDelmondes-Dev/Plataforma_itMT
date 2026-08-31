@@ -44,7 +44,9 @@ test('A15: teto válido barra, e 0 continua significando ilimitado', async () =>
 });
 
 /** Banco de mentira para o dossiê: devolve as estatísticas pedidas e um catálogo mínimo. */
-function dbDossie({ cargasBloqueadas = 0, fontesSemLicenca = 0, refFuturas = 0, obs = 100 }) {
+function dbDossie({
+  cargasBloqueadas = 0, cargasCandidatas = 0, fontesSemLicenca = 0, refFuturas = 0, obs = 100,
+}) {
   return {
     query: async (sql) => {
       if (sql.includes('"Indicador_Nome" AS nome'))
@@ -52,7 +54,7 @@ function dbDossie({ cargasBloqueadas = 0, fontesSemLicenca = 0, refFuturas = 0, 
       if (sql.includes('AS cargas_bloqueadas'))
         return { rows: [{ obs, municipios: 141, min: '0', max: '10', ref_recente: '2025-12-31',
           ref_futuras: refFuturas, fontes: 1, fontes_sem_licenca: fontesSemLicenca,
-          cargas: 2, cargas_bloqueadas: cargasBloqueadas }] };
+          cargas: 2, cargas_bloqueadas: cargasBloqueadas, cargas_candidatas: cargasCandidatas }] };
       if (sql.includes('FROM "Municipio"')) return { rows: [{ n: 142 }] };
       return { rows: [] };
     },
@@ -70,7 +72,7 @@ test('dossiê RG-09: nenhuma checagem é decorativa — todas podem reprovar', a
   assert.equal(limpo.aprovado_tecnicamente, true, 'cenário íntegro deveria passar');
 
   const cenarios = [
-    ['Cargas promovidas', dbDossie({ cargasBloqueadas: 1 })],
+    ['Cargas confirmadas', dbDossie({ cargasBloqueadas: 1 })],
     ['Fonte com licença', dbDossie({ fontesSemLicenca: 1 })],
     ['Datas de referência', dbDossie({ refFuturas: 3 })],
     ['Tem observações', dbDossie({ obs: 0 })],
@@ -82,12 +84,23 @@ test('dossiê RG-09: nenhuma checagem é decorativa — todas podem reprovar', a
   }
 });
 
-test('dossiê RG-09: carga bloqueada por drift chega ao parecerista com motivo', async () => {
+test('dossiê RG-09: carga não confirmada chega ao parecerista com motivo', async () => {
   // RF-INGEST-005 bloqueia a promoção, mas se observações de uma carga
   // bloqueada estiverem vivas, quem decide publicar precisa saber.
   const r = await new ValidacaoTecnicaService(dbDossie({ cargasBloqueadas: 1 })).validar(1);
-  const c = checagem(r, 'Cargas promovidas');
+  const c = checagem(r, 'Cargas confirmadas');
   assert.equal(c.ok, false);
-  assert.match(c.detalhe, /não promovida|nao promovida/i, 'o detalhe precisa dizer o que houve');
+  assert.match(c.detalhe, /não confirmada|nao confirmada/i, 'o detalhe precisa dizer o que houve');
   assert.match(c.detalhe, /revise antes de publicar/i, 'e o que fazer a respeito');
+
+  // E18 (db/63): o vocabulário ganhou 'CANDIDATA' — carga que baixou o bruto
+  // e nunca completou o Ouro. Ela é tão problemática quanto a bloqueada por
+  // drift, e o dossiê precisa DISTINGUIR as duas para o revisor humano.
+  const candidata = await new ValidacaoTecnicaService(
+    dbDossie({ cargasBloqueadas: 1, cargasCandidatas: 1 }),
+  ).validar(1);
+  const cc = checagem(candidata, 'Cargas confirmadas');
+  assert.equal(cc.ok, false);
+  assert.match(cc.detalhe, /CANDIDATA/,
+    'carga não confirmada não pode se passar por drift: o parecerista precisa saber qual é o caso');
 });
