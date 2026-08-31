@@ -549,3 +549,33 @@ como **E23**, com o gatilho explícito: executar quando o usuário puder validar
 a ingestão ponta a ponta com a credencial nova. Os demais itens (observabilidade,
 registro de healthcheck e de backup no próprio banco, papéis `itmt_admin` e
 `itmt_readonly`) permanecem sem consumidor identificado e não entram.
+
+Adendo 31/08 (Core R2.3.7 — Primeira Execução Assistida): orquestrador de 12
+gates com inventário de máquina, falha segura e Support Bundle sanitizado.
+Bateria: os zeros de sempre. **Defeito novo e relevante:** o consolidado
+deixou de ser autossuficiente — desde o R2.3.6 ele emite `GRANT` para cinco
+papéis (`itmt_owner`, `itmt_admin`, `itmt_ingest`, `itmt_app`,
+`itmt_readonly`) e **não cria nenhum**, então falha em banco limpo com
+`role "itmt_app" does not exist`. Criados os papéis à mão, aplica limpo:
+1.318 tabelas, 3.422 FKs. Reportado com a cura (bloco `DO` idempotente antes
+do primeiro GRANT).
+
+**SEM absorção.** A convergência do pacote — falha não destrói estado — já é a
+regra do db/63: carga que falha permanece `CANDIDATA`, nada é apagado, e o
+checkpoint anterior segue válido. Nenhum outro item tem consumidor.
+
+**Registro do bloqueio estrutural da série, para não se repetir a discussão.**
+Enumeramos o que os orquestradores das sete rodadas importam contra o que foi
+entregue: **14 módulos `itmt_ingestion.*` referenciados, zero entregues** (só
+3 fragmentos avulsos, sem `pyproject.toml`, sem `src/`, sem `__init__.py`);
+5 scripts `infra/local/*` referenciados, 1 entregue. O miolo executável —
+pipeline SIDRA, warehouse, promoção, governança, camada semântica, certificação
+— nunca chegou. Por isso `INICIAR-ITMT.cmd` para na segunda linha, no
+`pip install -e`. Sete pacotes acrescentaram camadas sobre um motor ausente.
+
+Isso NÃO diminui o valor do que foi absorvido: E15, E17, E20 e E21 nasceram de
+ideias desta série e estão em produção com teste no ratchet, e a E21 em
+particular corrigiu um defeito real do portal. Mas fixa a régua para as
+próximas rodadas: **um pacote novo desta série só merece rito completo de
+laboratório se trouxer o runtime instalável ou uma ideia com consumidor real
+identificado.** Camada sem motor não avança o programa.
