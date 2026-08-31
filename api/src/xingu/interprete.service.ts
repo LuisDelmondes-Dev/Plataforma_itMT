@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CatalogoService, InterpreteLexico, SaidaInterprete, normalizar } from './interprete-lexico';
 import { validarPlano } from './tipos';
 import { envelopar } from './sentinela';
+import { extrairNumerais } from './narrador';
 import { CustoService } from './custo.service';
 import { REGIAO } from '../config/regiao';
 
@@ -217,6 +218,23 @@ export class InterpreteService {
     if (o.clarificar && typeof o.clarificar === 'object') {
       const c = o.clarificar as { pergunta?: string; opcoes?: { rotulo: string; pergunta_sugerida: string }[] };
       if (c.pergunta && Array.isArray(c.opcoes) && c.opcoes.length >= 1) {
+        // RG-03: o ramo CLARIFICACAO é o ÚNICO em que texto autoral do modelo
+        // chega ao usuário — o orquestrador vai de INTERPRETADA direto para
+        // CLARIFICACAO, pulando NARRADA e AUDITADA, então o auditor A06 nunca
+        // roda sobre ele. Sem esta guarda, o modelo podia responder "De qual
+        // município? A média estadual em 2024 ficou em 87,3%." e o portal
+        // exibia 87,3% como resposta da Xingú, com auditoria.numerais = 0.
+        //
+        // Uma pergunta de esclarecimento não precisa de numeral algum para
+        // cumprir sua função. Qualquer numeral aqui é invenção: recusamos a
+        // saída e o RG-05 degrada para o intérprete léxico, cujas
+        // clarificações são de template fixo.
+        const textos = [
+          c.pergunta,
+          ...c.opcoes.flatMap((o) => [o?.rotulo ?? '', o?.pergunta_sugerida ?? '']),
+        ];
+        if (textos.some((t) => extrairNumerais(String(t)).length > 0)) return null;
+
         return { tipo: 'CLARIFICACAO', clarificacao: { pergunta: c.pergunta, opcoes: c.opcoes.slice(0, 2) } };
       }
       return null;

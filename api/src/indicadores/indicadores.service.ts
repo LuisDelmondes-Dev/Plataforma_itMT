@@ -228,7 +228,25 @@ export class IndicadoresService {
         WHERE o."Observacao_IndicadorId" = $1
           AND o."Observacao_CodigoIbge" = ANY($2)
           AND o."Observacao_DataReferencia" <= $3::date
-        ORDER BY o."Observacao_CodigoIbge", o."Observacao_DataReferencia" DESC`,
+        -- O desempate por carga NÃO é cosmético. A UNIQUE de "Observacao" é
+        -- (Indicador, CodigoIbge, DataReferencia, FonteId): duas fontes na
+        -- MESMA referência são legais por schema, e existem no banco real —
+        -- "Área plantada" tem 141 municípios com duas fontes concorrentes e
+        -- 114 deles com valores DIFERENTES. Sem desempate, o DISTINCT ON
+        -- deixava a escolha para o plano de execução: o total estadual medido
+        -- variou de 21.586.733 para 21.583.275 apenas ligando enable_sort=off,
+        -- com o banco intacto. Um motor determinístico que muda de resposta
+        -- conforme o planejador não é determinístico.
+        --
+        -- Enquanto não existir precedência de fonte declarada por indicador
+        -- (registrado como pendência), a regra é a MAIS RECENTEMENTE CARREGADA:
+        -- reprodutível, explicável ao cidadão e alinhada à linhagem — vence o
+        -- que a última carga auditada afirmou. O id da observação encerra o
+        -- empate residual de duas cargas no mesmo instante.
+        ORDER BY o."Observacao_CodigoIbge",
+                 o."Observacao_DataReferencia" DESC,
+                 c."Carga_DataExtracao" DESC,
+                 o."Observacao_Id" DESC`,
       [indicadorId, codigos, dataReferencia],
     );
     return r.rows;
@@ -681,6 +699,26 @@ export class IndicadoresService {
           codigo: params.codigo,
           dataReferencia: `${ano}-12-31`,
         });
+
+        // `observacoes()` devolve a parcela VIGENTE ≤ a data pedida, o que é
+        // correto para uma consulta pontual ("o que se sabe em 2023") e ERRADO
+        // para uma série: sem esta guarda, um município com uma única
+        // observação em 2019 devolvia cinco pontos de 2019 a 2023, todos com o
+        // mesmo valor, carimbados com o ano pedido. Não é zerar a ausência —
+        // é carregar o passado para a frente como se fosse observação, e o
+        // ponto seguia para a projeção (que declarava R² = 1 sobre um único
+        // dado real), para o dossiê da Xingú e para `PesquisaSerieHistorica`,
+        // onde era selado pelo hash canônico com categoria OBSERVADO.
+        //
+        // Regra: o ano só vira ponto se a referência MAIS RECENTE entre as
+        // parcelas for daquele ano. Se a mais nova é anterior, nada foi
+        // observado naquele ano e o ponto é repetição — omitir é a resposta
+        // honesta (RN-005).
+        const referenciaMaisNova = r.procedencia
+          .map((p) => p.data_referencia)
+          .reduce((a, b) => (a > b ? a : b), '');
+        if (referenciaMaisNova.slice(0, 4) !== String(ano)) continue;
+
         pontos.push({ ano, valor: r.valor });
         local = r.local;
       } catch {

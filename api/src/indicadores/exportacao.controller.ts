@@ -12,6 +12,28 @@ function slug(s: string) {
 }
 
 /**
+ * Escapa um campo para CSV e NEUTRALIZA inje\u00e7\u00e3o de f\u00f3rmula.
+ *
+ * O arquivo \u00e9 servido com BOM justamente para o Excel pt-BR abrir com dois
+ * cliques, ent\u00e3o um campo iniciado por `=`, `+`, `-`, `@`, TAB ou CR seria
+ * interpretado como F\u00d3RMULA na m\u00e1quina de quem baixa. O nome de uma fonte vem
+ * do cat\u00e1logo de ingest\u00e3o e \u00e9 texto livre \u2014 basta uma fonte cadastrada como
+ * `=cmd|'/c calc'!A1` para o portal p\u00fablico distribuir o payload.
+ *
+ * N\u00fameros leg\u00edtimos s\u00e3o preservados: `delta_media_estadual` \u00e9 negativo com
+ * frequ\u00eancia, e prefixar ap\u00f3strofo neles corromperia a planilha.
+ *
+ * Fun\u00e7\u00e3o pura, exportada para teste unit\u00e1rio.
+ */
+export function escaparCampoCsv(bruto: string): string {
+  const NUMERO = /^-?\d+(?:[.,]\d+)?$/;
+  const PERIGOSO = /^[=+\-@\t\r]/;
+  const texto = String(bruto ?? '');
+  const v = PERIGOSO.test(texto) && !NUMERO.test(texto) ? `'${texto}` : texto;
+  return /[";\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+/**
  * Linha de exporta\u00e7\u00e3o a partir de uma linha do ranking do motor (P5 rodada 2:
  * indicador RECALCULO n\u00e3o materializa observa\u00e7\u00e3o pr\u00f3pria por munic\u00edpio, ent\u00e3o
  * o detalhe sai do MESMO ranking determin\u00edstico). Mesmas 9 colunas do arquivo
@@ -94,7 +116,15 @@ export class ExportacaoController {
         WHERE o."Observacao_IndicadorId" = $1
           AND o."Observacao_CodigoIbge" = ANY($2)
           AND o."Observacao_DataReferencia" <= $3::date
-        ORDER BY o."Observacao_CodigoIbge", o."Observacao_DataReferencia" DESC`,
+        -- MESMO desempate de IndicadoresService.observacoes(): sem ele, o
+        -- DISTINCT ON escolhia entre fontes concorrentes conforme o plano de
+        -- execução, e o CSV podia divergir da tela para o mesmo indicador e
+        -- referência. A régua de procedência promete que o arquivo é idêntico
+        -- ao que está na tela — isto é o que sustenta a promessa.
+        ORDER BY o."Observacao_CodigoIbge",
+                 o."Observacao_DataReferencia" DESC,
+                 c."Carga_DataExtracao" DESC,
+                 o."Observacao_Id" DESC`,
       [id, codigos, ref],
     );
 
@@ -123,8 +153,10 @@ export class ExportacaoController {
     }
 
     if (fmt === 'csv') {
-      const esc = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-      const csv = [colunas.join(';'), ...linhas.map((l) => l.map(esc).join(';'))].join('\n');
+      const csv = [
+        colunas.join(';'),
+        ...linhas.map((l) => l.map(escaparCampoCsv).join(';')),
+      ].join('\n');
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${nome}.csv"`);
       return res.send('\ufeff' + csv); // BOM para Excel pt-BR

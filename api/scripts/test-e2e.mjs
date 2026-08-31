@@ -66,6 +66,15 @@ const SUITES_PADRAO = [
   // E18/E19 porque compartilha a doutrina de carga/quarentena; cria fonte e
   // cargas sintéticas próprias e as desfaz.
   'test/status-valor.unit.mjs',
+  // Revisão de segurança 31/08: neutralização de injeção de fórmula no CSV
+  // público (o arquivo vai com BOM e abre direto no Excel de quem baixa).
+  // Pura, sem banco — posição indiferente.
+  'test/exportacao-csv.unit.mjs',
+  // Revisão 31/08 — os dois defeitos CRÍTICOS do motor: DISTINCT ON sem
+  // desempate (o total estadual mudava com o plano de execução) e serie()
+  // imputando o valor do ano anterior. Cria fonte/carga/indicador sintéticos
+  // com DUAS fontes na mesma referência, cenário que o seed não reproduz.
+  'test/determinismo-motor.unit.mjs',
   // Evolução E3 (db/60 — status do dado no quinteto de procedência). Por
   // último de propósito: cria/remove um indicador sintético aprovado.
   'test/status-dado.unit.mjs',
@@ -84,6 +93,25 @@ const alvo = process.env.TEST_DATABASE_URL
   : new URL(origem.toString());
 
 if (!process.env.TEST_DATABASE_URL) alvo.pathname = '/itmt_test';
+
+// A guarda de "mesmo servidor" abaixo compara o que `new URL()` enxerga, mas
+// quem CONECTA é o pg, via pg-connection-string — e ele aplica ?host=, ?port= e
+// ?hostaddr= POR CIMA do que está na autoridade da URL. Sem esta recusa,
+// `postgres://itmt:itmt@localhost:5432/itmt_test?host=prod&port=6543` passaria
+// na guarda e a suíte DESTRUTIVA (CREATE/DROP DATABASE) rodaria em "prod".
+// O nome do banco não é contornável assim — vem sempre do pathname —, mas o
+// servidor era. Recusamos os parâmetros em vez de tentar interpretá-los.
+const SOBRESCREVEM_DESTINO = ['host', 'hostaddr', 'port', 'dbname', 'database'];
+for (const [rotulo, url] of [['administrativo', origem], ['de teste', alvo]]) {
+  for (const chave of SOBRESCREVEM_DESTINO) {
+    if (url.searchParams.has(chave)) {
+      throw new Error(
+        `URL do banco ${rotulo} traz "?${chave}=", que o driver aplica por cima do host/porta da própria URL ` +
+          'e tornaria a verificação de destino desta suíte inútil. Coloque o destino na autoridade da URL.',
+      );
+    }
+  }
+}
 
 const banco = decodeURIComponent(alvo.pathname.replace(/^\//, ''));
 if (!/^[a-z][a-z0-9_]*(?:_test|_teste)$/.test(banco)) {
