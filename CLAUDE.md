@@ -9,7 +9,7 @@ programa público estruturado em fases **F0–F7**, não um app CRUD. Quatro par
 
 | Pasta | Stack | Papel |
 |---|---|---|
-| `db/` | PostgreSQL 16+ / pgvector | 62 migrações SQL escritas à mão, **sem ORM** |
+| `db/` | PostgreSQL 16+ / pgvector | 64 migrações SQL escritas à mão, **sem ORM** |
 | `api/` | NestJS 11 + driver `pg` cru | o **motor determinístico** |
 | `web/` | Next.js 16 / React 19 (App Router) | portal público, 23 páginas |
 | `coletores/` | Python | raspagem de fontes sem API (CNES/TabNet, INEP) |
@@ -56,7 +56,7 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
   livre nunca podem chegar ao banco — só contexto já autenticado por membership.
 - **Modelo externo se absorve, nunca substitui (ADR-010).** O usuário traz, de
   tempos em tempos, pacotes de arquitetura gerados por outra IA (Fases 1–5, Core
-  R2/R2.1/R2.2 — ~1.285 tabelas, snake_case, 11 schemas). A decisão vigente e
+  R2/R2.1/R2.2/R2.3.x — ~1.299 tabelas, snake_case, 11 schemas). A decisão vigente e
   aprovada: **a base da casa permanece o núcleo governado**; as ideias boas entram
   uma a uma por migração nova, adaptadas à convenção `"Tabela_Atributo"`, **cada
   uma com consumidor real no código e teste no ratchet**. Nunca copie DDL externo,
@@ -64,7 +64,7 @@ parecem "estranhas". Antes de alterar qualquer fluxo, confirme que ainda valem:
   por isso). O modelo externo é instalado só no laboratório `itmt_dw_homolog`
   (Postgres local, sem PostGIS: colunas `geometry` viram stub `text`), para
   validação física — os pacotes chegam com **zero GRANT/RLS/particionamento** e
-  já reincidiram 4× na classe de defeito "seed silencioso" (`INSERT ... SELECT` de
+  já reincidiram 5× na classe de defeito "seed silencioso" (`INSERT ... SELECT` de
   fonte vazia que não insere nada e não dá erro). Ao receber um pacote novo: rito
   de bateria de segurança → aplicar no lab com `ON_ERROR_STOP` → conferir os seeds
   alegados por contagem → decidir a absorção no ADR-010.
@@ -112,12 +112,12 @@ npm run verificar-cadeia   # recomputa a cadeia SHA-256; exit 1 se quebrada
 ### Testes (suíte e2e — `node --test`)
 
 `scripts/test-e2e.mjs` **cria e derruba sozinho** um banco descartável, aplica
-todas as migrações, roda as 40 suítes e termina verificando a cadeia. Aponte
+todas as migrações, roda as 41 suítes e termina verificando a cadeia. Aponte
 `DATABASE_URL` para o banco **administrativo** (`postgres`), não para o dev:
 
 ```bash
 cd api
-DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 258 testes, ~2,5 min
+DATABASE_URL=postgres://itmt:itmt@localhost:5432/postgres npm test   # 276 testes, ~2,5 min
 ```
 
 O runner recusa qualquer alvo cujo nome não termine em `_test`/`_teste`, e força
@@ -235,10 +235,10 @@ propósito** (mais rigoroso).
 
 ## Onde o programa realmente está
 
-Software local: **verde** — 62 migrações aplicam do zero, 258/258 testes, cadeia
+Software local: **verde** — 64 migrações aplicam do zero, 276/276 testes, cadeia
 íntegra, builds de API e web limpos, zero vulnerabilidades de produção no `npm audit`.
 
-**Atenção ao entrar (situação de 29/08/2026):** as migrações **48–62 e todo o
+**Atenção ao entrar (situação de 31/08/2026):** as migrações **48–64 e todo o
 código que as consome ainda NÃO estão commitados** — vivem só na cópia de
 trabalho (39 arquivos novos, 30 alterados). E o **banco dev `itmt` está na 47**:
 antes de rodar a API contra ele, aplique as pendentes (`npm run migrar`), senão
