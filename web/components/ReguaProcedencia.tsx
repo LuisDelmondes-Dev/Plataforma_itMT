@@ -38,6 +38,8 @@ export function ReguaProcedencia({
   const p = procedencia[0];
   if (!p) return null;
   const extras = procedencia.slice(1);
+  // E3: selo discreto quando QUALQUER fonte do número está em fase preliminar.
+  const preliminar = procedencia.some((x) => x.status_dado === 'PRELIMINAR');
 
   return (
     <div className={`regua${animada ? ' animada' : ''}`}>
@@ -47,6 +49,7 @@ export function ReguaProcedencia({
           Fonte: <Fonte p={p} /> · dados de {p.data_referencia.slice(0, 4)}
           {extras.length > 0 ? ` · +${extras.length} fonte${extras.length > 1 ? 's' : ''}` : ''}
         </span>
+        {preliminar && <span className="selo-preliminar">dado preliminar</span>}
         <button
           type="button"
           className="regua-entenda"
@@ -58,6 +61,12 @@ export function ReguaProcedencia({
       </div>
       {aberta && (
         <div className="regua-detalhe">
+          {preliminar && (
+            <p>
+              A fonte classifica este dado como <strong>preliminar</strong>: os valores ainda
+              podem ser revisados quando a apuração for consolidada.
+            </p>
+          )}
           <p>
             Este número vem de <Fonte p={p} />, referente a{' '}
             <TermoExplicado id="referencia">{p.data_referencia.slice(0, 4)}</TermoExplicado>
